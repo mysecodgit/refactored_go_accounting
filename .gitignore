@@ -1,0 +1,9 @@
+bin/
+vendor/
+.env
+*.log
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+.envrc
