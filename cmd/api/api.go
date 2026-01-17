@@ -87,6 +87,7 @@ func (app *application) mount() http.Handler {
 				r.Get("/", app.getBuildingHandler)
 				r.Put("/", app.updateBuildingHandler)
 				r.Delete("/", app.deleteBuildingHandler)
+				r.Get("/available-units", app.getAvailableUnitsByBuildingIDHandler)
 
 				r.Route("/units", func(r chi.Router) {
 					r.Get("/", app.getUnitsHandler)
@@ -160,6 +161,24 @@ func (app *application) mount() http.Handler {
 
 				})
 
+				r.Route("/sales-receipts", func(r chi.Router) {
+					r.Get("/", app.getSalesReceiptsHandler)
+					r.Post("/", app.createSalesReceiptHandler)
+					r.Route("/{salesReceiptID}", func(r chi.Router) {
+						r.Get("/", app.getSalesReceiptHandler)
+						r.Put("/", app.updateSalesReceiptHandler)
+					})
+				})
+
+				r.Route("/leases", func(r chi.Router) {
+					r.Get("/", app.getLeasesHandler)
+					r.Post("/", app.createLeaseHandler)
+					r.Route("/{leaseID}", func(r chi.Router) {
+						r.Get("/", app.getLeaseHandler)
+						r.Put("/", app.updateLeaseHandler)
+					})
+				})
+
 				r.Route("/credit-memos", func(r chi.Router) {
 					r.Get("/", app.getAllCreditMemoHandler)
 					r.Post("/", app.createCreditMemoHandler)
@@ -186,6 +205,15 @@ func (app *application) mount() http.Handler {
 						r.Get("/", app.getJournalHandler)
 						r.Put("/", app.updateJournalHandler)
 					})
+				})
+
+				r.Route("/readings", func(r chi.Router) {
+					r.Get("/", app.getReadingsHandler)
+					// r.Post("/", app.createReadingHandler)
+					// r.Route("/{readingID}", func(r chi.Router) {
+					// 	r.Get("/", app.getReadingHandler)
+					// 	r.Put("/", app.updateReadingHandler)
+					// })
 				})
 
 			})

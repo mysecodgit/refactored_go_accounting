@@ -23,6 +23,11 @@ type Reading struct {
 	Status        string    `json:"status"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+
+	// relationships
+	Item       Item    `json:"item"`
+	Unit       Unit    `json:"unit"`
+	PeopleName *string `json:"people_name"`
 }
 
 type ReadingStore struct {
@@ -34,19 +39,32 @@ func NewReadingStore(db *sql.DB) *ReadingStore {
 }
 
 // GetAll returns all readings
-func (s *ReadingStore) GetAll(ctx context.Context, buildingID int64) ([]Reading, error) {
+func (s *ReadingStore) GetAll(ctx context.Context, buildingID int64, status *string) ([]Reading, error) {
 	query := `
-		SELECT id, item_id, unit_id, lease_id, reading_month, reading_year,
-		       reading_date, previous_value, current_value, unit_price,
-		       total_amount, notes, status, created_at, updated_at
-		FROM readings where building_id = ?
-		ORDER BY reading_date DESC
+		SELECT r.id, i.id as item_id, u.id as unit_id, l.id as lease_id, r.reading_month, r.reading_year,
+		       r.reading_date, r.previous_value, r.current_value, r.unit_price,
+		       r.total_amount, r.notes, r.status, r.created_at, r.updated_at,
+			   i.name as item_name, u.name as unit_name, p.name as people_name
+		FROM readings r 
+		LEFT JOIN items i ON r.item_id = i.id
+		LEFT JOIN units u ON r.unit_id = u.id
+		LEFT JOIN buildings b ON u.building_id = b.id
+		LEFT JOIN leases l ON r.lease_id = l.id
+		LEFT JOIN people p ON l.people_id = p.id
+		where b.id = ?
+		
 	`
+
+	if status != nil {
+		query += " and r.status = ?"
+	}
+
+	query += " ORDER BY r.reading_date DESC"
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
 
-	rows, err := s.db.QueryContext(ctx, query, buildingID)
+	rows, err := s.db.QueryContext(ctx, query, buildingID, status)
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +89,9 @@ func (s *ReadingStore) GetAll(ctx context.Context, buildingID int64) ([]Reading,
 			&r.Status,
 			&r.CreatedAt,
 			&r.UpdatedAt,
+			&r.Item.Name,
+			&r.Unit.Name,
+			&r.PeopleName,
 		); err != nil {
 			return nil, err
 		}

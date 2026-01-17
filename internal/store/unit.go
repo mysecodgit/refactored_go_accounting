@@ -68,6 +68,25 @@ func (s *UnitStore) GetByID(ctx context.Context, id int64) (*Unit, error) {
 	return &u, nil
 }
 
+func (s *UnitStore) GetByIdTx(ctx context.Context, tx *sql.Tx, id int64) (*Unit, error) {
+	query := `
+		SELECT id, name, building_id, created_at, updated_at
+		FROM units
+		WHERE id = ?
+	`
+	
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	var u Unit
+	err := tx.QueryRowContext(ctx, query, id).Scan(&u.ID, &u.Name, &u.BuildingID, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	return &u, nil
+}
+
 func (s *UnitStore) GetAllByPeopleID(ctx context.Context, peopleID int64) ([]Unit, error) {
 	query := `
 	SELECT DISTINCT u.id, u.name, u.building_id
@@ -171,4 +190,47 @@ func (s *UnitStore) Delete(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+// get available units by building id
+func (s *UnitStore) GetAvailableUnitsByBuildingID(ctx context.Context, buildingID int64,includeUnitID *int64) ([]Unit, error) {
+	query := `
+		SELECT DISTINCT u.id, u.name, u.building_id
+		FROM units u
+		WHERE u.building_id = ?
+			AND u.id NOT IN (
+				SELECT DISTINCT l.unit_id
+				FROM leases l
+				WHERE l.building_id = ? AND l.status = '1'
+			)
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, buildingID, buildingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var units []Unit
+	for rows.Next() {
+		var u Unit
+		if err := rows.Scan(&u.ID, &u.Name, &u.BuildingID); err != nil {
+			return nil, err
+		}
+		units = append(units, u)
+	}
+
+	// get unit by id if includeUnitID is not 0
+	if includeUnitID != nil {
+		unit, err := s.GetByID(ctx, *includeUnitID)
+		if err != nil {
+			return nil, err
+		}
+		units = append(units, *unit)
+	}
+
+	return units, nil
 }

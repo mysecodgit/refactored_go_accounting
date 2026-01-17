@@ -35,6 +35,10 @@ type Storage struct {
 	ExpenseLine *ExpenseLineStore
 	Journal *JournalStore
 	JournalLine *JournalLineStore
+	SalesReceipt *SalesReceiptStore
+	ReceiptItem *ReceiptItemStore
+	Lease *LeaseStore
+	LeaseFile *LeaseFileStore
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -60,6 +64,10 @@ func NewStorage(db *sql.DB) Storage {
 		ExpenseLine: &ExpenseLineStore{db},
 		Journal: &JournalStore{db},
 		JournalLine: &JournalLineStore{db},
+		SalesReceipt: &SalesReceiptStore{db},
+		ReceiptItem: &ReceiptItemStore{db},
+		Lease: &LeaseStore{db},
+		LeaseFile: &LeaseFileStore{db},
 	}
 }
 

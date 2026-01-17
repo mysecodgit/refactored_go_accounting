@@ -36,3 +36,28 @@ func (app *application) getReadingsByUnitHandler(w http.ResponseWriter, r *http.
 	}
 }
 
+func (app *application) getReadingsHandler(w http.ResponseWriter, r *http.Request) {
+
+	idStr := chi.URLParam(r, "buildingID")
+	buildingID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+
+	var status *string
+	q := r.URL.Query()
+
+	if statusStr := q.Get("status"); statusStr != "" {
+		status = &statusStr
+	}
+
+	readings, err := app.service.Reading.GetAll(r.Context(), buildingID, status)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.jsonResponse(w, http.StatusOK, readings); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}

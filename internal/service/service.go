@@ -21,6 +21,8 @@ type Service struct {
 	Check *CheckService
 	Journal *JournalService
 	InvoicePayment *InvoicePaymentService
+	SalesReceipt *SalesReceiptService
+	Lease *LeaseService
 }
 
 func NewService(
@@ -65,6 +67,21 @@ func NewService(
 			store.Account,
 			store.Invoice,
 			store.Split,
+		),
+		SalesReceipt: NewSalesReceiptService(
+			db,
+			store.SalesReceipt,
+			store.ReceiptItem,
+			store.Transaction,
+			store.Split,
+			store.Account,
+			store.Item,
+		),
+		Lease: NewLeaseService(
+			db,
+			store.Lease,
+			store.Unit,
+			store.LeaseFile,
 		),
 	}
 }

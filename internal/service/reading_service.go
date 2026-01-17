@@ -7,7 +7,7 @@ import (
 )
 
 type ReadingStore interface {
-	GetAll(ctx context.Context,buildingID int64) ([]store.Reading, error)
+	GetAll(ctx context.Context,buildingID int64, status *string) ([]store.Reading, error)
 	GetByID(ctx context.Context, id int64) (*store.Reading, error)
 	GetAllByUnitID(ctx context.Context, unitID int64) ([]store.ReadingByUnitResponse, error)
 	Create(ctx context.Context, reading *store.Reading) error
@@ -23,8 +23,8 @@ func NewReadingService(readingStore ReadingStore) *ReadingService {
 	return &ReadingService{readingStore: readingStore}
 }
 
-func (s *ReadingService) GetAll(ctx context.Context,buildingID int64) ([]store.Reading, error) {
-	return s.readingStore.GetAll(ctx,buildingID)
+func (s *ReadingService) GetAll(ctx context.Context,buildingID int64, status *string) ([]store.Reading, error) {
+	return s.readingStore.GetAll(ctx,buildingID, status)
 }
 
 func (s *ReadingService) GetByID(ctx context.Context, id int64) (*store.Reading, error) {

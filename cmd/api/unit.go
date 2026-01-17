@@ -18,6 +18,40 @@ type updateUnitRequest struct {
 	BuildingID int64  `json:"building_id" validate:"required"`
 }
 
+func (app *application) getAvailableUnitsByBuildingIDHandler(w http.ResponseWriter, r *http.Request) {
+
+	idStr := chi.URLParam(r, "buildingID")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+
+	var includeUnitID *int64
+	q := r.URL.Query()
+
+	if includeUnitIDStr := q.Get("include_unit_id"); includeUnitIDStr != "" {
+		if pid, err := strconv.ParseInt(includeUnitIDStr, 10, 64); err == nil {
+			includeUnitID = &pid
+		}
+	}
+
+	units, err := app.service.Unit.GetAvailableUnitsByBuildingID(r.Context(), id, includeUnitID)
+	if err != nil {
+		switch err {
+		case store.ErrNotFound:
+			app.notFoundError(w, r, err)
+		default:
+			app.internalServerError(w, r, err)
+		}
+		return
+	}
+
+	if err := app.jsonResponse(w, http.StatusOK, units); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 func (app *application) getUnitsHandler(w http.ResponseWriter, r *http.Request) {
 
 	idStr := chi.URLParam(r, "buildingID")
