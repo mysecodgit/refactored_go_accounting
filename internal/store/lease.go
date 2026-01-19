@@ -161,6 +161,39 @@ func (s *LeaseStore) GetByID(ctx context.Context, id int64) (*Lease, error) {
 	return &l, nil
 }
 
+// get active lease of a unit
+func (s *LeaseStore) GetActiveLeaseByUnitID(ctx context.Context, unitID int64) (*Lease, error) {
+	query := `
+		SELECT * FROM leases WHERE unit_id = ? AND status = '1'
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	var l Lease
+	err := s.db.QueryRowContext(ctx, query, unitID).Scan(
+		&l.ID,
+		&l.PeopleID,
+		&l.BuildingID,
+		&l.UnitID,
+		&l.StartDate,
+		&l.EndDate,
+		&l.RentAmount,
+		&l.DepositAmount,
+		&l.ServiceAmount,
+		&l.LeaseTerms,
+		&l.Status,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &l, nil
+}
+
 func (s *LeaseStore) Create(ctx context.Context, tx *sql.Tx, l *Lease) (*int64, error) {
 	query := `
 		INSERT INTO leases

@@ -204,6 +204,32 @@ func (s *CreditMemoStore) GetByID(ctx context.Context, id int64) (*CreditMemo, e
 	return &cm, nil
 }
 
+func (s *CreditMemoStore) GetByPeopleID(ctx context.Context, peopleID int64) ([]CreditMemo, error) {
+	query := `
+		SELECT * FROM credit_memo WHERE people_id = ?
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, peopleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var credits []CreditMemo
+	for rows.Next() {
+		var cm CreditMemo
+		if err := rows.Scan(&cm.ID, &cm.TransactionID, &cm.Reference, &cm.Date, &cm.UserID, &cm.DepositTo, &cm.LiabilityAccount, &cm.PeopleID, &cm.BuildingID, &cm.UnitID, &cm.Amount, &cm.Description, &cm.Status, &cm.CreatedAt, &cm.UpdatedAt); err != nil {
+			return nil, err
+		}
+		credits = append(credits, cm)
+	}
+
+	return credits, nil
+}
+
 func (s *CreditMemoStore) Create(ctx context.Context, tx *sql.Tx, cm *CreditMemo) (*int64, error) {
 	query := `
 		INSERT INTO credit_memo

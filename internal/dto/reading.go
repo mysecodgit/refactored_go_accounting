@@ -7,10 +7,10 @@ type LeaseWithPeople struct {
 	People *store.People `json:"people,omitempty"`
 }
 
-type CreateReadingRequest struct {
+type ReadingPayload struct {
 	ItemID        int      `json:"item_id"`
 	UnitID        int      `json:"unit_id"`
-	LeaseID       *int     `json:"lease_id"`
+	LeaseID       *int64   `json:"lease_id"`
 	ReadingMonth  *string  `json:"reading_month"`
 	ReadingYear   *string  `json:"reading_year"`
 	ReadingDate   string   `json:"reading_date"`
@@ -20,36 +20,29 @@ type CreateReadingRequest struct {
 	TotalAmount   *float64 `json:"total_amount"`
 	Notes         *string  `json:"notes"`
 	Status        string   `json:"status"`
+}
+
+type CreateReadingRequest struct {
+	Readings []ReadingPayload `json:"readings"`
 }
 
 type UpdateReadingRequest struct {
-	ID            int      `json:"id"`
-	ItemID        int      `json:"item_id"`
-	UnitID        int      `json:"unit_id"`
-	LeaseID       *int     `json:"lease_id"`
-	ReadingMonth  *string  `json:"reading_month"`
-	ReadingYear   *string  `json:"reading_year"`
-	ReadingDate   string   `json:"reading_date"`
-	PreviousValue *float64 `json:"previous_value"`
-	CurrentValue  *float64 `json:"current_value"`
-	UnitPrice     *float64 `json:"unit_price"`
-	TotalAmount   *float64 `json:"total_amount"`
-	Notes         *string  `json:"notes"`
-	Status        string   `json:"status"`
+	ID int `json:"id"`
+	ReadingPayload
 }
 
 type ReadingResponse struct {
-	Reading store.Reading       `json:"reading"`
+	Reading store.Reading `json:"reading"`
 	Item    store.Item    `json:"item"`
-	Unit    store.Unit     `json:"unit"`
-	Lease   *store.Lease `json:"lease,omitempty"`
+	Unit    store.Unit    `json:"unit"`
+	Lease   *store.Lease  `json:"lease,omitempty"`
 }
 
 type ReadingListItem struct {
-	Reading store.Reading          `json:"reading"`
-	Item    store.Item       `json:"item"`
-	Unit    store.Unit        `json:"unit"`
-	Lease   *store.Lease `json:"lease,omitempty"`
+	Reading store.Reading `json:"reading"`
+	Item    store.Item    `json:"item"`
+	Unit    store.Unit    `json:"unit"`
+	Lease   *store.Lease  `json:"lease,omitempty"`
 }
 
 type BulkImportReadingRequest struct {

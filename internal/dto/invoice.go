@@ -1,8 +1,7 @@
 package dto
-
-import "github.com/mysecodgit/go_accounting/internal/store"
-
-// import "github.com/mysecodgit/go_accounting/internal/store"
+import (
+	store "github.com/mysecodgit/go_accounting/internal/store"
+)
 
 // type InvoiceItemInput struct {
 // 	ItemID        int      `json:"item_id"`

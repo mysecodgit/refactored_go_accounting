@@ -30,6 +30,8 @@ type LeaseStore interface {
 
 	GetByID(ctx context.Context, id int64) (*store.Lease, error)
 
+	GetActiveLeaseByUnitID(ctx context.Context, unitID int64) (*store.Lease, error)
+
 	Create(ctx context.Context, tx *sql.Tx, lease *store.Lease) (*int64, error)
 	Update(ctx context.Context, tx *sql.Tx, lease *store.Lease) (*int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -52,6 +54,7 @@ type LeaseService struct {
 	leaseStore     LeaseStore
 	unitStore      UnitStore
 	leaseFileStore LeaseFileStore
+	peopleStore    PeopleStore
 }
 
 func NewLeaseService(
@@ -59,12 +62,14 @@ func NewLeaseService(
 	leaseStore LeaseStore,
 	unitStore UnitStore,
 	leaseFileStore LeaseFileStore,
+	peopleStore PeopleStore,
 ) *LeaseService {
 	return &LeaseService{
 		db:             db,
 		leaseStore:     leaseStore,
 		unitStore:      unitStore,
 		leaseFileStore: leaseFileStore,
+		peopleStore:    peopleStore,
 	}
 }
 
@@ -101,6 +106,25 @@ func (s *LeaseService) GetByID(ctx context.Context, id int64) (*dto.LeaseRespons
 	}, nil
 }
 
+func (s *LeaseService) GetActiveLeaseByUnitID(ctx context.Context, unitID int64) ([]map[string]any, error) {
+	lease, err := s.leaseStore.GetActiveLeaseByUnitID(ctx, unitID)
+	if err != nil {
+		return nil, err
+	}
+
+	people, err := s.peopleStore.GetByID(ctx, lease.PeopleID)
+	if err != nil {
+		return nil, err
+	}
+	return []map[string]any{
+		{
+			"lease":  lease,
+			"people": people,
+		},
+	}, nil
+
+}
+
 /*
 |--------------------------------------------------------------------------
 | Create Lease + Upload Files
@@ -125,16 +149,16 @@ func (s *LeaseService) Create(
 		}
 
 		lease := &store.Lease{
-			PeopleID:       int64(req.PeopleID),
-			BuildingID:     unit.BuildingID,
-			UnitID:         int64(req.UnitID),
-			StartDate:      req.StartDate,
-			EndDate:        req.EndDate,
-			RentAmount:     req.RentAmount,
+			PeopleID:      int64(req.PeopleID),
+			BuildingID:    unit.BuildingID,
+			UnitID:        int64(req.UnitID),
+			StartDate:     req.StartDate,
+			EndDate:       req.EndDate,
+			RentAmount:    req.RentAmount,
 			DepositAmount: req.DepositAmount,
 			ServiceAmount: req.ServiceAmount,
-			LeaseTerms:     req.LeaseTerms,
-			Status:         req.Status,
+			LeaseTerms:    req.LeaseTerms,
+			Status:        req.Status,
 		}
 
 		leaseID, err := s.leaseStore.Create(ctx, tx, lease)
@@ -155,7 +179,7 @@ func (s *LeaseService) Create(
 			uploadedFiles = append(uploadedFiles, path)
 
 			leaseFile := &store.LeaseFile{
-				LeaseID:       *leaseID,
+				LeaseID:      *leaseID,
 				Filename:     filepath.Base(path),
 				OriginalName: file.Filename,
 				FilePath:     path,
@@ -216,17 +240,17 @@ func (s *LeaseService) Update(
 		}
 
 		lease := &store.Lease{
-			ID:             existing.ID,
-			PeopleID:       int64(req.PeopleID),
-			BuildingID:     unit.BuildingID,
-			UnitID:         int64(req.UnitID),
-			StartDate:      req.StartDate,
-			EndDate:        req.EndDate,
-			RentAmount:     req.RentAmount,
+			ID:            existing.ID,
+			PeopleID:      int64(req.PeopleID),
+			BuildingID:    unit.BuildingID,
+			UnitID:        int64(req.UnitID),
+			StartDate:     req.StartDate,
+			EndDate:       req.EndDate,
+			RentAmount:    req.RentAmount,
 			DepositAmount: req.DepositAmount,
 			ServiceAmount: req.ServiceAmount,
-			LeaseTerms:     req.LeaseTerms,
-			Status:         req.Status,
+			LeaseTerms:    req.LeaseTerms,
+			Status:        req.Status,
 		}
 
 		if _, err := s.leaseStore.Update(ctx, tx, lease); err != nil {
@@ -246,7 +270,7 @@ func (s *LeaseService) Update(
 			uploadedFiles = append(uploadedFiles, path)
 
 			leaseFile := &store.LeaseFile{
-				LeaseID:       existing.ID,
+				LeaseID:      existing.ID,
 				Filename:     filepath.Base(path),
 				OriginalName: file.Filename,
 				FilePath:     path,
@@ -276,8 +300,6 @@ func (s *LeaseService) Update(
 
 	return &response, nil
 }
-
-
 
 /*
 |--------------------------------------------------------------------------
@@ -319,4 +341,3 @@ func saveLeaseFile(leaseID int64, file *multipart.FileHeader) (string, error) {
 
 	return dstPath, nil
 }
-

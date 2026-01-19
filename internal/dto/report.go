@@ -11,7 +11,10 @@ type AccountBalance struct {
 	AccountNumber string  `json:"account_number"`
 	AccountName   string  `json:"account_name"`
 	AccountType   string  `json:"account_type"`
-	Balance       float64 `json:"balance"`
+	AccountTypeStatus string  `json:"account_type_status"`
+	Debit             float64 `json:"debit"`
+	Credit            float64 `json:"credit"`
+	Balance           float64 `json:"balance"`
 }
 
 type BalanceSheetSection struct {

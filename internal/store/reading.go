@@ -3,26 +3,25 @@ package store
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 // Reading represents a meter/usage reading
 type Reading struct {
-	ID            int64     `json:"id"`
-	ItemID        int64     `json:"item_id"`
-	UnitID        int64     `json:"unit_id"`
-	LeaseID       *int64    `json:"lease_id"`
-	ReadingMonth  *string   `json:"reading_month"`
-	ReadingYear   *string   `json:"reading_year"`
-	ReadingDate   time.Time `json:"reading_date"`
-	PreviousValue *float64  `json:"previous_value"`
-	CurrentValue  *float64  `json:"current_value"`
-	UnitPrice     *float64  `json:"unit_price"`
-	TotalAmount   *float64  `json:"total_amount"`
-	Notes         *string   `json:"notes"`
-	Status        string    `json:"status"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            int64    `json:"id"`
+	ItemID        int64    `json:"item_id"`
+	UnitID        int64    `json:"unit_id"`
+	LeaseID       *int64   `json:"lease_id"`
+	ReadingMonth  *string  `json:"reading_month"`
+	ReadingYear   *string  `json:"reading_year"`
+	ReadingDate   string   `json:"reading_date"`
+	PreviousValue *float64 `json:"previous_value"`
+	CurrentValue  *float64 `json:"current_value"`
+	UnitPrice     *float64 `json:"unit_price"`
+	TotalAmount   *float64 `json:"total_amount"`
+	Notes         *string  `json:"notes"`
+	Status        string   `json:"status"`
+	CreatedAt     string   `json:"created_at"`
+	UpdatedAt     string   `json:"updated_at"`
 
 	// relationships
 	Item       Item    `json:"item"`
@@ -143,15 +142,15 @@ func (s *ReadingStore) GetByID(ctx context.Context, id int64) (*Reading, error) 
 }
 
 type ReadingByUnitResponse struct {
-	ID            int64     `json:"id"`
-	ItemName      string    `json:"item_name"`
-	PreviousValue float64   `json:"previous_value"`
-	CurrentValue  float64   `json:"current_value"`
-	Consumption   float64   `json:"consumption"`
-	UnitPrice     float64   `json:"unit_price"`
-	TotalAmount   float64   `json:"total_amount"`
-	ReadingDate   time.Time `json:"reading_date"`
-	Item          Item      `json:"item"`
+	ID            int64   `json:"id"`
+	ItemName      string  `json:"item_name"`
+	PreviousValue float64 `json:"previous_value"`
+	CurrentValue  float64 `json:"current_value"`
+	Consumption   float64 `json:"consumption"`
+	UnitPrice     float64 `json:"unit_price"`
+	TotalAmount   float64 `json:"total_amount"`
+	ReadingDate   string  `json:"reading_date"`
+	Item          Item    `json:"item"`
 }
 
 func (s *ReadingStore) GetAllByUnitID(ctx context.Context, unitID int64) ([]ReadingByUnitResponse, error) {
@@ -210,8 +209,91 @@ ORDER BY r.reading_date DESC
 	return readings, nil
 }
 
+// get latest reading by item id and unit id
+func (s *ReadingStore) GetLatest(ctx context.Context, itemID int64, unitID int64) (*Reading, error) {
+	query := `
+		SELECT * FROM readings WHERE item_id = ? AND unit_id = ? AND status = '1' ORDER BY reading_date DESC LIMIT 1
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, itemID, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var readings []Reading
+	for rows.Next() {
+		var r Reading
+		if err := rows.Scan(
+			&r.ID,
+			&r.ItemID,
+			&r.UnitID,
+			&r.LeaseID,
+			&r.ReadingMonth,
+			&r.ReadingYear,
+			&r.ReadingDate,
+			&r.PreviousValue,
+			&r.CurrentValue,
+			&r.UnitPrice,
+			&r.TotalAmount,
+			&r.Notes,
+			&r.Status,
+			&r.CreatedAt,
+			&r.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		readings = append(readings, r)
+	}
+
+	return &readings[0], nil
+}
+
+// get latest reading by item id and unit id
+func (s *ReadingStore) GetLatestTx(ctx context.Context, tx *sql.Tx, itemID int64, unitID int64) (*Reading, error) {
+	query := `
+		SELECT * FROM readings WHERE item_id = ? AND unit_id = ? AND status = '1' ORDER BY reading_date DESC LIMIT 1
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	row := tx.QueryRowContext(ctx, query, itemID, unitID)
+
+	var r Reading
+	err := row.Scan(
+		&r.ID,
+		&r.ItemID,
+		&r.UnitID,
+		&r.LeaseID,
+		&r.ReadingMonth,
+		&r.ReadingYear,
+		&r.ReadingDate,
+		&r.PreviousValue,
+		&r.CurrentValue,
+		&r.UnitPrice,
+		&r.TotalAmount,
+		&r.Notes,
+		&r.Status,
+		&r.CreatedAt,
+		&r.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &r, nil
+}
+
 // Create inserts a new reading
-func (s *ReadingStore) Create(ctx context.Context, r *Reading) error {
+func (s *ReadingStore) Create(ctx context.Context, tx *sql.Tx, r *Reading) error {
 	query := `
 		INSERT INTO readings (
 			item_id, unit_id, lease_id, reading_month, reading_year,
@@ -224,7 +306,7 @@ func (s *ReadingStore) Create(ctx context.Context, r *Reading) error {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
 
-	result, err := s.db.ExecContext(
+	result, err := tx.ExecContext(
 		ctx,
 		query,
 		r.ItemID,
@@ -276,7 +358,7 @@ func (s *ReadingStore) Update(ctx context.Context, r *Reading) error {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
 
-	result, err := s.db.ExecContext(
+	_, err := s.db.ExecContext(
 		ctx,
 		query,
 		r.ItemID,
@@ -295,15 +377,6 @@ func (s *ReadingStore) Update(ctx context.Context, r *Reading) error {
 	)
 	if err != nil {
 		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrNotFound
 	}
 
 	return nil

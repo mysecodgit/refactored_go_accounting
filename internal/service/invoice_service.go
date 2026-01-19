@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
@@ -29,6 +30,7 @@ type InvoiceItemStore interface {
 
 type InvoiceAppliedCreditStore interface {
 	GetAllByInvoiceID(ctx context.Context, invoiceID int64) ([]store.InvoiceAppliedCredit, error)
+	GetAllByCreditMemoID(ctx context.Context, creditMemoID int64) ([]store.InvoiceAppliedCredit, error)
 	GetByID(ctx context.Context, id int64) (*store.InvoiceAppliedCredit, error)
 	Create(ctx context.Context, invoiceAppliedCredit *store.InvoiceAppliedCredit) error
 	Update(ctx context.Context, invoiceAppliedCredit *store.InvoiceAppliedCredit) error
@@ -62,6 +64,7 @@ type SplitStore interface {
 
 type InvoiceService struct {
 	db                          *sql.DB
+	creditMemoStore             CreditMemoStore
 	accountStore                AccountStore
 	invoiceStore                InvoiceStore
 	invoiceItemStore            InvoiceItemStore
@@ -75,6 +78,7 @@ type InvoiceService struct {
 
 func NewInvoiceService(
 	db *sql.DB,
+	creditMemoStore CreditMemoStore,
 	accountStore AccountStore,
 	invoiceStore InvoiceStore,
 	invoiceItemStore InvoiceItemStore,
@@ -87,6 +91,7 @@ func NewInvoiceService(
 ) *InvoiceService {
 	return &InvoiceService{
 		db:                          db,
+		creditMemoStore:             creditMemoStore,
 		accountStore:                accountStore,
 		invoiceStore:                invoiceStore,
 		invoiceItemStore:            invoiceItemStore,
@@ -444,7 +449,7 @@ func (s *InvoiceService) GenerateInvoiceSplits(
 			AccountID: accountID,
 			Debit:     debit,
 			Credit:    credit,
-			UnitID:   &req.UnitID,
+			UnitID:    &req.UnitID,
 			PeopleID:  &req.PeopleID,
 			Status:    "1",
 		})
@@ -562,7 +567,7 @@ func (s *InvoiceService) CreateInvoicePayment(ctx context.Context, paymentDTO dt
 			Status:        "1",
 		}
 
-		_,err = s.invoicePaymentStore.Create(ctx, tx, invoicePayment)
+		_, err = s.invoicePaymentStore.Create(ctx, tx, invoicePayment)
 		if err != nil {
 			return err
 		}
@@ -634,7 +639,6 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 			return err
 		}
 
-
 		// create splits
 		debitSplit := store.Split{
 			TransactionID: *transactionId,
@@ -656,8 +660,8 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 			AccountID:     int64(discountDTO.IncomeAccount),
 			Debit:         &discountDTO.Amount,
 			Credit:        nil,
-			UnitID:       invoice.UnitID,
-			PeopleID:     invoice.PeopleID,
+			UnitID:        invoice.UnitID,
+			PeopleID:      invoice.PeopleID,
 			Status:        "1",
 		}
 
@@ -701,4 +705,138 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 
 func (s *InvoiceService) GetAppliedCredits(ctx context.Context, invoiceID int64) ([]store.InvoiceAppliedCredit, error) {
 	return s.invoiceAppliedCreditStore.GetAllByInvoiceID(ctx, invoiceID)
+}
+
+// GET INVOICE AVAILABLE CREDITS
+func (s *InvoiceService) GetInvoiceAvailableCredits(ctx context.Context, invoiceID int64) (*dto.AvailableCreditsResponse, error) {
+
+	// get invoice
+	invoice, err := s.invoiceStore.GetByID(ctx, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("invoice not found: %v", err)
+	}
+
+	if invoice.PeopleID == nil {
+		return &dto.AvailableCreditsResponse{
+			InvoiceID: int(invoiceID),
+			PeopleID:  0,
+			Credits:   []dto.AvailableCreditMemo{},
+		}, nil
+	}
+
+	// get available credits
+	credits, err := s.creditMemoStore.GetByPeopleID(ctx, *invoice.PeopleID)
+	if err != nil {
+		return nil, fmt.Errorf("available credits not found: %v", err)
+	}
+
+	peopleID := *invoice.PeopleID
+	availableCredits := []dto.AvailableCreditMemo{}
+
+	for _, credit := range credits {
+		if credit.PeopleID == peopleID && strconv.Itoa(credit.Status) == "1" { // TODO: change status to string later
+			// Get applied amount for this credit memo
+			appliedCredits, err := s.invoiceAppliedCreditStore.GetAllByCreditMemoID(ctx, credit.ID)
+			if err != nil {
+				continue
+			}
+
+			// sum applied credits amount
+			appliedAmount := 0.0
+			for _, appliedCredit := range appliedCredits {
+				appliedAmount += appliedCredit.Amount
+			}
+
+			// Calculate available amount and round to 2 decimal places to avoid floating-point precision issues
+			availableAmount := credit.Amount - appliedAmount
+			// Round to 2 decimal places
+			availableAmount = float64(int(availableAmount*100+0.5)) / 100
+
+			if availableAmount > 0 {
+				availableCredits = append(availableCredits, dto.AvailableCreditMemo{
+					ID:              int(credit.ID),
+					Date:            credit.Date,
+					Amount:          credit.Amount,
+					AppliedAmount:   appliedAmount,
+					AvailableAmount: availableAmount,
+					Description:     credit.Description,
+				})
+			}
+		}
+	}
+
+	return &dto.AvailableCreditsResponse{
+		InvoiceID: int(invoiceID),
+		PeopleID:  int(*invoice.PeopleID),
+		Credits:   availableCredits,
+	}, nil
+}
+
+// APPLY INVOICE CREDITS
+func (s *InvoiceService) ApplyInvoiceCredits(ctx context.Context, req dto.CreateInvoiceAppliedCreditRequest) error {
+	// Validate amount
+	if req.Amount <= 0 {
+		return fmt.Errorf("amount must be greater than 0")
+	}
+
+	// Get invoice
+	invoice, err := s.invoiceStore.GetByID(ctx, int64(req.InvoiceID))
+	if err != nil {
+		return fmt.Errorf("invoice not found: %v", err)
+	}
+
+	if invoice.PeopleID == nil {
+		return fmt.Errorf("invoice must have a people_id")
+	}
+
+	// if invoice.ARAccountID == nil {
+	// 	return fmt.Errorf("invoice must have an A/R account")
+	// }
+
+	// Get credit memo
+	creditMemo, err := s.creditMemoStore.GetByID(ctx, int64(req.CreditMemoID))
+	if err != nil {
+		return fmt.Errorf("credit memo not found: %v", err)
+	}
+
+	// Validate people_id matches
+	if creditMemo.PeopleID != *invoice.PeopleID {
+		return fmt.Errorf("credit memo people_id does not match invoice people_id")
+	}
+
+	// Check available amount
+	appliedCredits, err := s.invoiceAppliedCreditStore.GetAllByInvoiceID(ctx, int64(req.InvoiceID))
+
+	// sum applied credits amount
+	appliedAmount := 0.0
+	for _, appliedCredit := range appliedCredits {
+		appliedAmount += appliedCredit.Amount
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to get applied amount: %v", err)
+	}
+
+	availableAmount := creditMemo.Amount - appliedAmount
+	if req.Amount > availableAmount {
+		return fmt.Errorf("amount exceeds available credit. Available: %.2f, Requested: %.2f", availableAmount, req.Amount)
+	}
+
+	// Create invoice applied credit record (no transaction or splits needed)
+	appliedCreditStatus := "1"
+	appliedCredit := store.InvoiceAppliedCredit{
+		InvoiceID:    int64(req.InvoiceID),
+		CreditMemoID: int64(req.CreditMemoID),
+		Amount:       req.Amount,
+		Description:  req.Description,
+		Date:         req.Date,
+		Status:       appliedCreditStatus,
+	}
+
+	err = s.invoiceAppliedCreditStore.Create(ctx, &appliedCredit)
+	if err != nil {
+		return fmt.Errorf("failed to create invoice applied credit: %v", err)
+	}
+
+	return nil
 }

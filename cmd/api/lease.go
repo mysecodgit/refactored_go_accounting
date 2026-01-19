@@ -93,6 +93,22 @@ func (app *application) getLeaseHandler(w http.ResponseWriter, r *http.Request) 
 	app.jsonResponse(w, http.StatusOK, lease)
 }
 
+func (app *application) getActiveLeaseByUnitIDHandler(w http.ResponseWriter, r *http.Request) {
+	unitIDStr := chi.URLParam(r, "unitID")
+	unitID, err := strconv.ParseInt(unitIDStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+	lease, err := app.service.Lease.GetActiveLeaseByUnitID(r.Context(), unitID)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	app.jsonResponse(w, http.StatusOK, lease)	
+}
+
 func (app *application) updateLeaseHandler(w http.ResponseWriter, r *http.Request) {
 	var req dto.UpdateLeaseRequest
 	if err := readJSON(w, r, &req); err != nil {

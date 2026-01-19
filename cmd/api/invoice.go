@@ -202,3 +202,45 @@ func (app *application) getInvoiceAppliedCreditsHandler(w http.ResponseWriter, r
 
 	app.jsonResponse(w, http.StatusOK, credits)
 }
+
+func (app *application) getInvoiceAvailableCreditsHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "invoiceID")
+	invoiceId, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+
+	availableCredits, err := app.service.Invoice.GetInvoiceAvailableCredits(r.Context(), invoiceId)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	app.jsonResponse(w, http.StatusOK, availableCredits)
+}
+
+func (app *application) applyInvoiceCreditHandler(w http.ResponseWriter, r *http.Request) {
+	var req dto.CreateInvoiceAppliedCreditRequest
+	if err := readJSON(w, r, &req); err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+
+	idStr := chi.URLParam(r, "invoiceID")
+	invoiceId, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+
+	req.InvoiceID = int(invoiceId)
+
+	err = app.service.Invoice.ApplyInvoiceCredits(r.Context(), req)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	app.jsonResponse(w, http.StatusOK, "Invoice credit applied successfully")
+}

@@ -69,6 +69,46 @@ func (s *InvoiceAppliedCreditStore) GetAllByInvoiceID(ctx context.Context, invoi
 	return credits, nil
 }
 
+func (s *InvoiceAppliedCreditStore) GetAllByCreditMemoID(ctx context.Context, creditMemoID int64) ([]InvoiceAppliedCredit, error) {
+	query := `
+		SELECT id, invoice_id, credit_memo_id,
+		       amount, description, date, status,
+		       created_at, updated_at
+		FROM invoice_applied_credits
+		WHERE credit_memo_id = ? AND status = '1'
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, creditMemoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var credits []InvoiceAppliedCredit
+	for rows.Next() {
+		var c InvoiceAppliedCredit
+		if err := rows.Scan(
+			&c.ID,
+			&c.InvoiceID,
+			&c.CreditMemoID,
+			&c.Amount,
+			&c.Description,
+			&c.Date,
+			&c.Status,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		credits = append(credits, c)
+	}
+
+	return credits, nil
+}
+
 func (s *InvoiceAppliedCreditStore) GetByID(ctx context.Context, id int64) (*InvoiceAppliedCredit, error) {
 	query := `
 		SELECT id, invoice_id, credit_memo_id,

@@ -94,6 +94,7 @@ func (app *application) mount() http.Handler {
 					r.Post("/", app.createUnitHandler)
 					r.Route("/{unitID}", func(r chi.Router) {
 						r.Get("/", app.getUnitHandler)
+						r.Get("/active_lease", app.getActiveLeaseByUnitIDHandler)
 						r.Get("/readings", app.getReadingsByUnitHandler)
 						r.Put("/", app.updateUnitHandler)
 						r.Delete("/", app.deleteUnitHandler)
@@ -146,8 +147,9 @@ func (app *application) mount() http.Handler {
 						r.Get("/payments", app.getPaymentsHandler)
 						r.Get("/applied-discounts", app.getInvoiceDiscountsHandler)
 						r.Post("/apply-discount", app.applyInvoiceDiscountHandler)
-
+						r.Get("/available-credits", app.getInvoiceAvailableCreditsHandler)
 						r.Get("/applied-credits", app.getInvoiceAppliedCreditsHandler)
+						r.Post("/apply-credit", app.applyInvoiceCreditHandler)
 					})
 				})
 
@@ -209,11 +211,18 @@ func (app *application) mount() http.Handler {
 
 				r.Route("/readings", func(r chi.Router) {
 					r.Get("/", app.getReadingsHandler)
-					// r.Post("/", app.createReadingHandler)
-					// r.Route("/{readingID}", func(r chi.Router) {
-					// 	r.Get("/", app.getReadingHandler)
-					// 	r.Put("/", app.updateReadingHandler)
-					// })
+					r.Get("/latest", app.getLatestReadingHandler)
+					r.Post("/", app.createReadingHandler)
+					r.Route("/{readingID}", func(r chi.Router) {
+						r.Get("/", app.getReadingHandler)
+						r.Put("/", app.updateReadingHandler)
+					})
+				})
+
+				r.Route("/reports", func(r chi.Router) {
+					r.Get("/balance-sheet", app.getBalanceSheetHandler)
+					r.Get("/trial-balance", app.getTrialBalanceHandler)
+					r.Get("/customer-balance-summary", app.getCustomerBalanceSummaryHandler)
 				})
 
 			})

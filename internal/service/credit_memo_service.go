@@ -21,6 +21,7 @@ import (
 
 type CreditMemoStore interface {
 	GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]store.CreditMemoListResponse, error)
+	GetByPeopleID(ctx context.Context, peopleID int64) ([]store.CreditMemo, error)
 	GetByID(ctx context.Context, id int64) (*store.CreditMemo, error)
 	Create(ctx context.Context, tx *sql.Tx, cm *store.CreditMemo) (*int64, error)
 	Update(ctx context.Context, tx *sql.Tx, cm *store.CreditMemo) (*int64, error)
@@ -332,4 +333,9 @@ func (s *CreditMemoService) validateBalanced(splits []store.Split) error {
 	}
 
 	return nil
+}
+
+
+func (s *CreditMemoService) GetByPeopleID(ctx context.Context, peopleID int64) ([]store.CreditMemo, error) {
+	return s.creditMemoStore.GetByPeopleID(ctx, peopleID)
 }

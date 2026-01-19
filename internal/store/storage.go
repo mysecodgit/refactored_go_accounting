@@ -39,6 +39,7 @@ type Storage struct {
 	ReceiptItem *ReceiptItemStore
 	Lease *LeaseStore
 	LeaseFile *LeaseFileStore
+	Report *ReportStore
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -68,6 +69,7 @@ func NewStorage(db *sql.DB) Storage {
 		ReceiptItem: &ReceiptItemStore{db},
 		Lease: &LeaseStore{db},
 		LeaseFile: &LeaseFileStore{db},
+		Report: &ReportStore{db},
 	}
 }
 

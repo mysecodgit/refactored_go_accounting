@@ -23,6 +23,7 @@ type Service struct {
 	InvoicePayment *InvoicePaymentService
 	SalesReceipt *SalesReceiptService
 	Lease *LeaseService
+	Report *ReportService
 }
 
 func NewService(
@@ -40,6 +41,7 @@ func NewService(
 		Item: NewItemService(store.Item),
 		Invoice: NewInvoiceService(
 			db,
+			store.CreditMemo,
 			store.Account,
 			store.Invoice,
 			store.InvoiceItem,
@@ -50,7 +52,7 @@ func NewService(
 			store.Transaction,
 			store.Item,
 		),
-		Reading: NewReadingService(store.Reading),
+		Reading: NewReadingService(store.Reading, db),
 		CreditMemo: NewCreditMemoService(
 			db,
 			store.CreditMemo,
@@ -82,6 +84,10 @@ func NewService(
 			store.Lease,
 			store.Unit,
 			store.LeaseFile,
+			store.People,
+		),
+		Report: NewReportService(
+			store.Report,
 		),
 	}
 }

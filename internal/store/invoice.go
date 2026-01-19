@@ -60,6 +60,7 @@ type InvoiceListResponse struct {
 	UpdatedAt           string  `json:"updated_at"`
 	PaidAmount          float64 `json:"paid_amount"`
 	AppliedCreditsTotal float64 `json:"applied_credits_total"`
+	AppliedDiscountsTotal float64 `json:"applied_discounts_total"`
 	People              People  `json:"people"`
 	Unit                Unit    `json:"unit"`
 }
@@ -81,6 +82,11 @@ func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 				FROM invoice_applied_credits iac 
 				WHERE iac.invoice_id = i.id AND iac.status = '1'
 			), 0) as applied_credits_total,
+			COALESCE((
+				SELECT SUM(iad.amount) 
+				FROM invoice_applied_discounts iad 
+				WHERE iad.invoice_id = i.id AND iad.status = '1'
+			), 0) as applied_discounts_total,
 			p.name as people_name,
 			p.id as people_id,
 			u.id as unit_id,
@@ -134,6 +140,7 @@ func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 			&invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID,
 			&invoice.CreatedAt, &invoice.UpdatedAt,
 			&invoice.PaidAmount, &invoice.AppliedCreditsTotal,
+			&invoice.AppliedDiscountsTotal,
 			&invoice.People.Name, &invoice.People.ID,
 			&invoice.Unit.ID, &invoice.Unit.Name,
 		); err != nil {
