@@ -200,6 +200,24 @@ func (app *application) mount() http.Handler {
 					})
 				})
 
+				r.Route("/bills", func(r chi.Router) {
+					r.Get("/", app.getBillsHandler)
+					r.Post("/", app.createBillHandler)
+					r.Route("/{billID}", func(r chi.Router) {
+						r.Get("/", app.getBillHandler)
+						r.Put("/", app.updateBillHandler)
+					})
+				})
+
+				r.Route("/bill-payments", func(r chi.Router) {
+					r.Get("/", app.getBillPaymentsHandler)
+					r.Post("/", app.createBillPaymentHandler)
+					r.Route("/{paymentID}", func(r chi.Router) {
+						r.Get("/", app.getBillPaymentHandler)
+						r.Put("/", app.updateBillPaymentHandler)
+					})
+				})
+
 				r.Route("/journals", func(r chi.Router) {
 					r.Get("/", app.getJournalsHandler)
 					r.Post("/", app.createJournalHandler)
@@ -224,6 +242,8 @@ func (app *application) mount() http.Handler {
 					r.Get("/trial-balance", app.getTrialBalanceHandler)
 					r.Get("/customer-balance-summary", app.getCustomerBalanceSummaryHandler)
 					r.Get("/customer-balance-detail", app.getCustomerBalanceDetailHandler)
+					r.Get("/vendor-balance-summary", app.getVendorBalanceSummaryHandler)
+					r.Get("/vendor-balance-detail", app.getVendorBalanceDetailHandler)
 					r.Get("/transaction-details-by-account", app.getTransactionDetailsHandler)
 					r.Get("/profit-and-loss-standard", app.getProfitAndLossStandardHandler)
 					r.Get("/profit-and-loss-by-unit", app.getProfitAndLossByUnitHandler)

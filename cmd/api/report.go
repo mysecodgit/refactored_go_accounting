@@ -129,6 +129,69 @@ func (app *application) getCustomerBalanceDetailHandler(w http.ResponseWriter, r
 		app.internalServerError(w, r, err)
 	}
 }
+
+func (app *application) getVendorBalanceSummaryHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "buildingID")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+	var asOfDate *string
+	q := r.URL.Query()
+	if asOfDateStr := q.Get("as_of_date"); asOfDateStr != "" {
+		asOfDate = &asOfDateStr
+	}
+
+	if asOfDate == nil {
+		today := time.Now().Format("2006-01-02")
+		asOfDate = &today
+	}
+	vendorBalanceSummary, err := app.service.Report.GetVendorBalanceSummary(r.Context(), int(id), *asOfDate)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.jsonResponse(w, http.StatusOK, vendorBalanceSummary); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+func (app *application) getVendorBalanceDetailHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "buildingID")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+	var asOfDate *string
+	var peopleID *int
+	q := r.URL.Query()
+	if asOfDateStr := q.Get("as_of_date"); asOfDateStr != "" {
+		asOfDate = &asOfDateStr
+	}
+
+	if asOfDate == nil {
+		today := time.Now().Format("2006-01-02")
+		asOfDate = &today
+	}
+
+	if pidStr := q.Get("people_id"); pidStr != "" {
+		if pid, err := strconv.Atoi(pidStr); err == nil {
+			peopleID = &pid
+		}
+	}
+
+	vendorBalanceDetail, err := app.service.Report.GetVendorBalanceDetail(r.Context(), int(id), *asOfDate, peopleID)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.jsonResponse(w, http.StatusOK, vendorBalanceDetail); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 func (app *application) getTransactionDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "buildingID")
 	id, err := strconv.ParseInt(idStr, 10, 64)

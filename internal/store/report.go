@@ -293,6 +293,116 @@ WHERE s.status = '1' and t.transaction_date <= ? and t.building_id = ? and at.ty
 	return customerBalanceDetails, nil
 }
 
+// Vendor Balance Summary (similar to Customer Balance Summary but for Account Payable)
+type VendorSummary struct {
+	PeopleID   int     `json:"people_id"`
+	PeopleName string  `json:"people_name"`
+	Balance    float64 `json:"balance"`
+}
+
+func (s *ReportStore) GetVendorBalanceSummary(ctx context.Context, buildingID int, asOfDate string) ([]VendorSummary, error) {
+	query := `
+		SELECT p.id,p.name,(ifnull(SUM(s.credit),0) - ifnull(SUM(s.debit),0)) as balance
+FROM people p
+LEFT JOIN splits s ON s.people_id = p.id and s.status = "1"
+LEFT JOIN transactions t on s.transaction_id = t.id and t.status = "1" 
+LEFT JOIN accounts a on s.account_id = a.id
+LEFT JOIN account_types as at on a.account_type = at.id
+WHERE at.typeName = "Account Payable" and t.transaction_date <= ? and p.building_id = ?
+GROUP BY p.id
+HAVING balance <> 0
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, asOfDate, buildingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var vendorSummaries []VendorSummary
+	for rows.Next() {
+		var vendorSummary VendorSummary
+		if err := rows.Scan(
+			&vendorSummary.PeopleID,
+			&vendorSummary.PeopleName,
+			&vendorSummary.Balance,
+		); err != nil {
+			return nil, err
+		}
+		vendorSummaries = append(vendorSummaries, vendorSummary)
+	}
+	return vendorSummaries, nil
+}
+
+// Vendor Balance Detail (similar to Customer Balance Detail but for Account Payable)
+type VendorBalanceDetail struct {
+	PeopleID          int
+	Name              string
+	AccountID         int
+	AccountNumber     int
+	AccountName       string
+	TransactionDate   string
+	TransactionNumber string
+	Type              string
+	Memo              string
+	Debit             *float64
+	Credit            *float64
+}
+
+func (s *ReportStore) GetVendorBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) ([]VendorBalanceDetail, error) {
+	query := `
+		SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit,s.credit FROM splits s
+LEFT JOIN transactions t on s.transaction_id = t.id
+LEFT JOIN accounts ac on s.account_id = ac.id
+LEFT JOIN account_types as at on ac.account_type = at.id
+LEFT JOIN people p on s.people_id = p.id
+WHERE s.status = '1' and t.transaction_date <= ? and t.building_id = ? and at.typeName = "Account Payable"														
+	`
+
+	args := []any{asOfDate, buildingID}
+
+	if peopleID != nil {
+		query += " AND p.id = ?"
+		args = append(args, *peopleID)
+	}
+
+	query += " ORDER BY p.id,t.transaction_date asc"
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var vendorBalanceDetails []VendorBalanceDetail
+	for rows.Next() {
+		var vendorBalanceDetail VendorBalanceDetail
+		if err := rows.Scan(
+			&vendorBalanceDetail.PeopleID,
+			&vendorBalanceDetail.Name,
+			&vendorBalanceDetail.AccountID,
+			&vendorBalanceDetail.AccountNumber,
+			&vendorBalanceDetail.AccountName,
+			&vendorBalanceDetail.TransactionDate,
+			&vendorBalanceDetail.TransactionNumber,
+			&vendorBalanceDetail.Type,
+			&vendorBalanceDetail.Memo,
+			&vendorBalanceDetail.Debit,
+			&vendorBalanceDetail.Credit,
+		); err != nil {
+			return nil, err
+		}
+		vendorBalanceDetails = append(vendorBalanceDetails, vendorBalanceDetail)
+	}
+	return vendorBalanceDetails, nil
+}
+
 type TransactionDetail struct {
 	PeopleID          *int
 	Name              *string

@@ -176,6 +176,78 @@ type CustomerBalanceDetailsResponse struct {
 	GrandTotalBalance float64                `json:"grand_total_balance"`
 }
 
+// Vendor Balance Summary DTOs
+type VendorBalanceSummaryRequest struct {
+	BuildingID int    `json:"building_id"`
+	AsOfDate   string `json:"as_of_date"` // Date to calculate balances as of
+}
+
+type VendorBalance struct {
+	PeopleID   int     `json:"people_id"`
+	PeopleName string  `json:"people_name"`
+	Balance    float64 `json:"balance"` // Total balance from all splits
+}
+
+type VendorBalanceSummaryResponse struct {
+	BuildingID    int                `json:"building_id"`
+	AsOfDate      string             `json:"as_of_date"`
+	Vendors       []VendorBalance    `json:"vendors"`
+	TotalBalance  float64            `json:"total_balance"`
+}
+
+// Vendor Balance Details DTOs
+type VendorBalanceDetailsRequest struct {
+	BuildingID int    `json:"building_id"`
+	AsOfDate   string `json:"as_of_date"` // Date to calculate balances as of
+	PeopleID   *int   `json:"people_id"`  // Optional: filter by specific vendor
+}
+
+type VendorBalanceDetailSplit struct {
+	SplitID           int      `json:"split_id"`
+	TransactionID     int      `json:"transaction_id"`
+	TransactionNumber string   `json:"transaction_number"`
+	TransactionDate   string   `json:"transaction_date"`
+	TransactionType   string   `json:"transaction_type"`
+	TransactionMemo   string   `json:"transaction_memo"`
+	AccountID         int      `json:"account_id"`
+	AccountName       string   `json:"account_name"`
+	AccountNumber     int      `json:"account_number"`
+	Debit             *float64 `json:"debit"`
+	Credit            *float64 `json:"credit"`
+	Balance           float64  `json:"balance"` // Running balance for this vendor
+}
+
+type VendorBalanceAccount struct {
+	AccountID     int                        `json:"account_id"`
+	AccountName   string                     `json:"account_name"`
+	AccountNumber int                        `json:"account_number"`
+	Splits        []VendorBalanceDetailSplit `json:"splits"`
+	TotalDebit    float64                    `json:"total_debit"`
+	TotalCredit   float64                    `json:"total_credit"`
+	TotalBalance  float64                    `json:"total_balance"`
+	IsTotalRow    bool                       `json:"is_total_row,omitempty"` // Flag for account total row
+}
+
+type VendorBalanceDetails struct {
+	PeopleID     int                        `json:"people_id"`
+	PeopleName   string                     `json:"people_name"`
+	Accounts     []VendorBalanceAccount    `json:"accounts"`
+	TotalDebit   float64                    `json:"total_debit"`
+	TotalCredit  float64                    `json:"total_credit"`
+	TotalBalance float64                    `json:"total_balance"` // Final balance for the vendor
+	IsTotalRow   bool                       `json:"is_total_row,omitempty"` // Flag for vendor total row
+	IsHeader     bool                       `json:"is_header,omitempty"` // Flag for vendor header row
+}
+
+type VendorBalanceDetailsResponse struct {
+	BuildingID       int                      `json:"building_id"`
+	AsOfDate         string                   `json:"as_of_date"`
+	Vendors          []VendorBalanceDetails `json:"vendors"`
+	GrandTotalDebit  float64                 `json:"grand_total_debit"`
+	GrandTotalCredit float64                 `json:"grand_total_credit"`
+	GrandTotalBalance float64                `json:"grand_total_balance"`
+}
+
 // Profit and Loss Standard DTOs
 type ProfitAndLossStandardRequest struct {
 	BuildingID int    `json:"building_id"`

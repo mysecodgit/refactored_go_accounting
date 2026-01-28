@@ -27,6 +27,9 @@ type Storage struct {
 	InvoiceAppliedCredit *InvoiceAppliedCreditStore
 	InvoiceAppliedDiscount *InvoiceAppliedDiscountStore
 	InvoicePayment *InvoicePaymentStore
+	Bill *BillStore
+	BillExpenseLine *BillExpenseLineStore
+	BillPayment *BillPaymentStore
 	Split *SplitStore
 	Transaction *TransactionStore
 	Reading *ReadingStore
@@ -57,6 +60,9 @@ func NewStorage(db *sql.DB) Storage {
 		InvoiceAppliedCredit: &InvoiceAppliedCreditStore{db},
 		InvoiceAppliedDiscount: &InvoiceAppliedDiscountStore{db},
 		InvoicePayment: &InvoicePaymentStore{db},
+		Bill: &BillStore{db},
+		BillExpenseLine: &BillExpenseLineStore{db},
+		BillPayment: &BillPaymentStore{db},
 		Split: &SplitStore{db},
 		Transaction: &TransactionStore{db},
 		Reading: &ReadingStore{db},

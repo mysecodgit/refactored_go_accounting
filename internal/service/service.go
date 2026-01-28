@@ -19,6 +19,8 @@ type Service struct {
 	Reading        *ReadingService
 	CreditMemo     *CreditMemoService
 	Check          *CheckService
+	Bill           *BillService
+	BillPayment    *BillPaymentService
 	Journal        *JournalService
 	InvoicePayment *InvoicePaymentService
 	SalesReceipt   *SalesReceiptService
@@ -60,8 +62,10 @@ func NewService(
 			store.Split,
 			store.Account,
 		),
-		Check:   NewCheckService(db, store.Check, store.ExpenseLine, store.Split, store.Transaction, store.Account),
-		Journal: NewJournalService(db, store.Journal, store.JournalLine, store.Transaction, store.Split, store.Account),
+		Check:       NewCheckService(db, store.Check, store.ExpenseLine, store.Split, store.Transaction, store.Account),
+		Bill:        NewBillService(db, store.Bill, store.BillExpenseLine, store.Split, store.Transaction, store.Account),
+		BillPayment: NewBillPaymentService(db, store.BillPayment, store.Transaction, store.Account, store.Bill, store.Split),
+		Journal:     NewJournalService(db, store.Journal, store.JournalLine, store.Transaction, store.Split, store.Account),
 		InvoicePayment: NewInvoicePaymentService(
 			db,
 			store.InvoicePayment,
