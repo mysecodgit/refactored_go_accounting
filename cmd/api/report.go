@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -153,7 +154,7 @@ func (app *application) getTransactionDetailsHandler(w http.ResponseWriter, r *h
 		}
 	}
 
-	var accountIDs []int 
+	var accountIDs []int
 
 	if vals, ok := r.URL.Query()["account_id"]; ok {
 		accountIDs = make([]int, 0, len(vals))
@@ -161,7 +162,7 @@ func (app *application) getTransactionDetailsHandler(w http.ResponseWriter, r *h
 			id, err := strconv.Atoi(v)
 			if err != nil {
 				app.badRequestError(w, r, err)
-				return 
+				return
 			}
 			accountIDs = append(accountIDs, id)
 		}
@@ -186,7 +187,7 @@ func (app *application) getProfitAndLossStandardHandler(w http.ResponseWriter, r
 	}
 	var startDate *string
 	var endDate *string
-	
+
 	q := r.URL.Query()
 	if startDateStr := q.Get("start_date"); startDateStr != "" {
 		startDate = &startDateStr
@@ -201,6 +202,39 @@ func (app *application) getProfitAndLossStandardHandler(w http.ResponseWriter, r
 		return
 	}
 	if err := app.jsonResponse(w, http.StatusOK, profitAndLossStandard); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+func (app *application) getProfitAndLossByUnitHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "buildingID")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		app.badRequestError(w, r, err)
+		return
+	}
+	var startDate *string
+	var endDate *string
+
+	q := r.URL.Query()
+	if startDateStr := q.Get("start_date"); startDateStr != "" {
+		startDate = &startDateStr
+	}
+	if endDateStr := q.Get("end_date"); endDateStr != "" {
+		endDate = &endDateStr
+	}
+
+	if startDate == nil || endDate == nil {
+		app.badRequestError(w, r, fmt.Errorf("start_date and end_date are required"))
+		return
+	}
+
+	profitAndLossByUnit, err := app.service.Report.GetProfitAndLossByUnit(r.Context(), int(id), *startDate, *endDate)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.jsonResponse(w, http.StatusOK, profitAndLossByUnit); err != nil {
 		app.internalServerError(w, r, err)
 	}
 }

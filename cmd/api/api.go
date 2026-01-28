@@ -226,6 +226,7 @@ func (app *application) mount() http.Handler {
 					r.Get("/customer-balance-detail", app.getCustomerBalanceDetailHandler)
 					r.Get("/transaction-details-by-account", app.getTransactionDetailsHandler)
 					r.Get("/profit-and-loss-standard", app.getProfitAndLossStandardHandler)
+					r.Get("/profit-and-loss-by-unit", app.getProfitAndLossByUnitHandler)
 				})
 
 			})

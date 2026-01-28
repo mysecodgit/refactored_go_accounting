@@ -386,6 +386,16 @@ type PLAccountRow struct {
 	Balance       float64 `json:"balance"`
 }
 
+type PLAccountRowByUnit struct {
+	AccountID     int     `json:"account_id"`
+	AccountNumber int     `json:"account_number"`
+	AccountName   string  `json:"account_name"`
+	AccountType   string  `json:"typeName"`
+	UnitID        *int    `json:"unit_id"`
+	UnitName      *string `json:"unit_name"`
+	Balance       float64 `json:"balance"`
+}
+
 func (s *ReportStore) GetAccountBalanceByAccountType(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]PLAccountRow, error) {
 	query := `
 		SELECT 
@@ -436,6 +446,72 @@ ORDER BY ac.account_number;
 			&plAccount.Balance,
 		); err != nil {
 			return nil, err
+		}
+		plAccounts = append(plAccounts, plAccount)
+	}
+	return plAccounts, nil
+}
+
+func (s *ReportStore) GetAccountBalanceByAccountTypeAndUnit(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]PLAccountRowByUnit, error) {
+	query := `
+		SELECT 
+			ac.id AS account_id,
+			ac.account_number,
+			ac.account_name,
+			at.typeName,
+			s.unit_id,
+			u.name AS unit_name,
+			SUM(
+				CASE 
+					WHEN at.typeStatus = 'debit' THEN IFNULL(s.debit, 0) - IFNULL(s.credit, 0)
+					WHEN at.typeStatus = 'credit' THEN IFNULL(s.credit, 0) - IFNULL(s.debit, 0)
+					ELSE 0
+				END
+			) AS balance
+		FROM splits s
+		JOIN accounts ac ON s.account_id = ac.id
+		JOIN account_types at ON ac.account_type = at.id
+		JOIN transactions t ON s.transaction_id = t.id
+		LEFT JOIN units u ON s.unit_id = u.id
+		WHERE s.status = '1'
+		  AND t.status = '1'
+		  AND t.transaction_date BETWEEN ? AND ?
+		  AND t.building_id = ?
+		  AND at.type = ?
+		GROUP BY ac.id, ac.account_number, ac.account_name, at.typeName, s.unit_id, u.name
+		ORDER BY ac.account_number, COALESCE(u.name, 'No Unit');
+	`
+
+	args := []any{startDate, endDate, buildingID, accountType}
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var plAccounts []PLAccountRowByUnit
+	for rows.Next() {
+		var plAccount PLAccountRowByUnit
+		var unitName sql.NullString
+		if err := rows.Scan(
+			&plAccount.AccountID,
+			&plAccount.AccountNumber,
+			&plAccount.AccountName,
+			&plAccount.AccountType,
+			&plAccount.UnitID,
+			&unitName,
+			&plAccount.Balance,
+		); err != nil {
+			return nil, err
+		}
+		if unitName.Valid {
+			plAccount.UnitName = &unitName.String
+		} else {
+			noUnit := "No Unit"
+			plAccount.UnitName = &noUnit
 		}
 		plAccounts = append(plAccounts, plAccount)
 	}

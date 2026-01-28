@@ -7,23 +7,23 @@ import (
 )
 
 type Service struct {
-	User  *UserService
-	Building *BuildingService
-	Unit *UnitService
-	PeopleType *PeopleTypeService
-	People *PeopleService
-	AccountType *AccountTypeService
-	Account *AccountService
-	Item *ItemService
-	Invoice *InvoiceService
-	Reading *ReadingService
-	CreditMemo *CreditMemoService
-	Check *CheckService
-	Journal *JournalService
+	User           *UserService
+	Building       *BuildingService
+	Unit           *UnitService
+	PeopleType     *PeopleTypeService
+	People         *PeopleService
+	AccountType    *AccountTypeService
+	Account        *AccountService
+	Item           *ItemService
+	Invoice        *InvoiceService
+	Reading        *ReadingService
+	CreditMemo     *CreditMemoService
+	Check          *CheckService
+	Journal        *JournalService
 	InvoicePayment *InvoicePaymentService
-	SalesReceipt *SalesReceiptService
-	Lease *LeaseService
-	Report *ReportService
+	SalesReceipt   *SalesReceiptService
+	Lease          *LeaseService
+	Report         *ReportService
 }
 
 func NewService(
@@ -31,14 +31,14 @@ func NewService(
 	db *sql.DB,
 ) *Service {
 	return &Service{
-		User: NewUserService(store.User),
-		Building: NewBuildingService(store.Building),
-		Unit: NewUnitService(store.Unit),
-		PeopleType: NewPeopleTypeService(store.PeopleType),
-		People: NewPeopleService(store.People),
+		User:        NewUserService(store.User),
+		Building:    NewBuildingService(store.Building),
+		Unit:        NewUnitService(store.Unit),
+		PeopleType:  NewPeopleTypeService(store.PeopleType),
+		People:      NewPeopleService(store.People),
 		AccountType: NewAccountTypeService(store.AccountType),
-		Account: NewAccountService(store.Account),
-		Item: NewItemService(store.Item),
+		Account:     NewAccountService(store.Account),
+		Item:        NewItemService(store.Item),
 		Invoice: NewInvoiceService(
 			db,
 			store.CreditMemo,
@@ -60,7 +60,7 @@ func NewService(
 			store.Split,
 			store.Account,
 		),
-		Check: NewCheckService(db, store.Check, store.ExpenseLine, store.Split, store.Transaction, store.Account),
+		Check:   NewCheckService(db, store.Check, store.ExpenseLine, store.Split, store.Transaction, store.Account),
 		Journal: NewJournalService(db, store.Journal, store.JournalLine, store.Transaction, store.Split, store.Account),
 		InvoicePayment: NewInvoicePaymentService(
 			db,
@@ -88,6 +88,7 @@ func NewService(
 		),
 		Report: NewReportService(
 			store.Report,
+			store.Unit,
 		),
 	}
 }

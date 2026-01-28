@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/mysecodgit/go_accounting/internal/dto"
@@ -17,17 +18,25 @@ type ReportStore interface {
 	GetCustomerBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) ([]store.CustomerBalanceDetail, error)
 	GetTransactionDetails(ctx context.Context, buildingID int, startDate string, endDate string, accountID []int, unitID *int) ([]store.TransactionDetail, error)
 	GetAccountBalanceByAccountType(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]store.PLAccountRow, error)
+	GetAccountBalanceByAccountTypeAndUnit(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]store.PLAccountRowByUnit, error)
 }
 
 type ReportService struct {
 	reportStore ReportStore
+	unitStore   UnitStoreInterface
+}
+
+type UnitStoreInterface interface {
+	GetAll(ctx context.Context, buildingID int64) ([]store.Unit, error)
 }
 
 func NewReportService(
 	reportStore ReportStore,
+	unitStore UnitStoreInterface,
 ) *ReportService {
 	return &ReportService{
 		reportStore: reportStore,
+		unitStore:   unitStore,
 	}
 }
 
@@ -629,6 +638,242 @@ func (s *ReportService) GetProfitAndLossStandard(ctx context.Context, buildingID
 		NetProfitLoss: totalIncome - totalExpense,
 	}, nil
 
+}
+
+// GetProfitAndLossByUnit generates a profit and loss report grouped by unit
+func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID int, startDate string, endDate string) (*dto.ProfitAndLossByUnitResponse, error) {
+	// Get all units for the building
+	units, err := s.unitStore.GetAll(ctx, int64(buildingID))
+	if err != nil {
+		return nil, err
+	}
+
+	// Get income accounts by unit
+	incomeAccountsByUnit, err := s.reportStore.GetAccountBalanceByAccountTypeAndUnit(ctx, buildingID, startDate, endDate, "Income")
+	if err != nil {
+		return nil, err
+	}
+
+	// Get expense accounts by unit
+	expenseAccountsByUnit, err := s.reportStore.GetAccountBalanceByAccountTypeAndUnit(ctx, buildingID, startDate, endDate, "Expense")
+	if err != nil {
+		return nil, err
+	}
+
+	// Build unit map for quick lookup
+	unitMap := make(map[int]*dto.UnitColumn)
+	unitMap[0] = &dto.UnitColumn{UnitID: 0, UnitName: "No Unit"} // For NULL unit_id
+
+	for i := range units {
+		unitID := int(units[i].ID)
+		unitMap[unitID] = &dto.UnitColumn{
+			UnitID:   unitID,
+			UnitName: units[i].Name,
+		}
+	}
+
+	// Get all unique unit IDs from the data
+	unitIDSet := make(map[int]bool)
+	for _, row := range incomeAccountsByUnit {
+		if row.UnitID != nil {
+			unitIDSet[*row.UnitID] = true
+		} else {
+			unitIDSet[0] = true
+		}
+	}
+	for _, row := range expenseAccountsByUnit {
+		if row.UnitID != nil {
+			unitIDSet[*row.UnitID] = true
+		} else {
+			unitIDSet[0] = true
+		}
+	}
+
+	// Build units list (sorted by unit name, with "No Unit" last)
+	var unitsList []dto.UnitColumn
+	unitColumns := make([]dto.UnitColumn, 0, len(unitIDSet))
+	for id := range unitIDSet {
+		if id != 0 {
+			if unit, ok := unitMap[id]; ok {
+				unitColumns = append(unitColumns, *unit)
+			}
+		}
+	}
+	// Sort units by name
+	sort.Slice(unitColumns, func(i, j int) bool {
+		return unitColumns[i].UnitName < unitColumns[j].UnitName
+	})
+	unitsList = append(unitsList, unitColumns...)
+	// Add "No Unit" at the end if it exists
+	if unitIDSet[0] {
+		unitsList = append(unitsList, *unitMap[0])
+	}
+
+	// Build account maps: account_id -> map[unit_id]balance
+	incomeAccountMap := make(map[int]map[int]float64)
+	expenseAccountMap := make(map[int]map[int]float64)
+	accountInfoMap := make(map[int]struct {
+		AccountNumber int
+		AccountName   string
+	})
+
+	// Process income accounts
+	for _, row := range incomeAccountsByUnit {
+		unitID := 0
+		if row.UnitID != nil {
+			unitID = *row.UnitID
+		}
+		if incomeAccountMap[row.AccountID] == nil {
+			incomeAccountMap[row.AccountID] = make(map[int]float64)
+		}
+		incomeAccountMap[row.AccountID][unitID] = row.Balance
+		accountInfoMap[row.AccountID] = struct {
+			AccountNumber int
+			AccountName   string
+		}{
+			AccountNumber: row.AccountNumber,
+			AccountName:   row.AccountName,
+		}
+	}
+
+	// Process expense accounts
+	for _, row := range expenseAccountsByUnit {
+		unitID := 0
+		if row.UnitID != nil {
+			unitID = *row.UnitID
+		}
+		if expenseAccountMap[row.AccountID] == nil {
+			expenseAccountMap[row.AccountID] = make(map[int]float64)
+		}
+		expenseAccountMap[row.AccountID][unitID] = row.Balance
+		accountInfoMap[row.AccountID] = struct {
+			AccountNumber int
+			AccountName   string
+		}{
+			AccountNumber: row.AccountNumber,
+			AccountName:   row.AccountName,
+		}
+	}
+
+	// Build income account rows
+	incomeAccounts := make([]dto.AccountRow, 0)
+	for accountID, balances := range incomeAccountMap {
+		info := accountInfoMap[accountID]
+		total := 0.0
+		for _, balance := range balances {
+			total += balance
+		}
+		incomeAccounts = append(incomeAccounts, dto.AccountRow{
+			AccountID:     accountID,
+			AccountNumber: info.AccountNumber,
+			AccountName:   info.AccountName,
+			AccountType:   "income",
+			Balances:      balances,
+			Total:         total,
+		})
+	}
+
+	// Build expense account rows
+	expenseAccounts := make([]dto.AccountRow, 0)
+	for accountID, balances := range expenseAccountMap {
+		info := accountInfoMap[accountID]
+		total := 0.0
+		for _, balance := range balances {
+			total += balance
+		}
+		expenseAccounts = append(expenseAccounts, dto.AccountRow{
+			AccountID:     accountID,
+			AccountNumber: info.AccountNumber,
+			AccountName:   info.AccountName,
+			AccountType:   "expense",
+			Balances:      balances,
+			Total:         total,
+		})
+	}
+
+	// Calculate totals by unit
+	totalIncome := make(map[int]float64)
+	totalExpenses := make(map[int]float64)
+	netProfitLoss := make(map[int]float64)
+
+	for _, account := range incomeAccounts {
+		for unitID, balance := range account.Balances {
+			totalIncome[unitID] += balance
+		}
+	}
+
+	for _, account := range expenseAccounts {
+		for unitID, balance := range account.Balances {
+			totalExpenses[unitID] += balance
+		}
+	}
+
+	// Calculate net profit/loss by unit
+	for unitID := range totalIncome {
+		netProfitLoss[unitID] = totalIncome[unitID] - totalExpenses[unitID]
+	}
+	for unitID := range totalExpenses {
+		if _, exists := netProfitLoss[unitID]; !exists {
+			netProfitLoss[unitID] = -totalExpenses[unitID]
+		}
+	}
+
+	// Calculate grand totals
+	grandTotalIncome := 0.0
+	for _, total := range totalIncome {
+		grandTotalIncome += total
+	}
+
+	grandTotalExpenses := 0.0
+	for _, total := range totalExpenses {
+		grandTotalExpenses += total
+	}
+
+	grandTotalNetProfitLoss := grandTotalIncome - grandTotalExpenses
+
+	// Round values to 2 decimals
+	round2 := func(v float64) float64 {
+		return math.Round(v*100) / 100
+	}
+
+	for i := range incomeAccounts {
+		for unitID := range incomeAccounts[i].Balances {
+			incomeAccounts[i].Balances[unitID] = round2(incomeAccounts[i].Balances[unitID])
+		}
+		incomeAccounts[i].Total = round2(incomeAccounts[i].Total)
+	}
+
+	for i := range expenseAccounts {
+		for unitID := range expenseAccounts[i].Balances {
+			expenseAccounts[i].Balances[unitID] = round2(expenseAccounts[i].Balances[unitID])
+		}
+		expenseAccounts[i].Total = round2(expenseAccounts[i].Total)
+	}
+
+	for unitID := range totalIncome {
+		totalIncome[unitID] = round2(totalIncome[unitID])
+	}
+	for unitID := range totalExpenses {
+		totalExpenses[unitID] = round2(totalExpenses[unitID])
+	}
+	for unitID := range netProfitLoss {
+		netProfitLoss[unitID] = round2(netProfitLoss[unitID])
+	}
+
+	return &dto.ProfitAndLossByUnitResponse{
+		BuildingID:              buildingID,
+		StartDate:               startDate,
+		EndDate:                 endDate,
+		Units:                   unitsList,
+		IncomeAccounts:          incomeAccounts,
+		ExpenseAccounts:         expenseAccounts,
+		TotalIncome:             totalIncome,
+		TotalExpenses:           totalExpenses,
+		NetProfitLoss:           netProfitLoss,
+		GrandTotalIncome:        round2(grandTotalIncome),
+		GrandTotalExpenses:      round2(grandTotalExpenses),
+		GrandTotalNetProfitLoss: round2(grandTotalNetProfitLoss),
+	}, nil
 }
 
 type PLSection struct {
