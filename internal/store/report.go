@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 type ReportStore struct {
@@ -224,4 +225,219 @@ HAVING balance <> 0
 		customerSummaries = append(customerSummaries, customerSummary)
 	}
 	return customerSummaries, nil
+}
+
+// get customer balance details by account
+type CustomerBalanceDetail struct {
+	PeopleID          int
+	Name              string
+	AccountID         int
+	AccountNumber     int
+	AccountName       string
+	TransactionDate   string
+	TransactionNumber string
+	Type              string
+	Memo              string
+	Debit             *float64
+	Credit            *float64
+}
+
+func (s *ReportStore) GetCustomerBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) ([]CustomerBalanceDetail, error) {
+	query := `
+		SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit,s.credit FROM splits s
+LEFT JOIN transactions t on s.transaction_id = t.id
+LEFT JOIN accounts ac on s.account_id = ac.id
+LEFT JOIN account_types as at on ac.account_type = at.id
+LEFT JOIN people p on s.people_id = p.id
+WHERE s.status = '1' and t.transaction_date <= ? and t.building_id = ? and at.typeName = "Account Receivable"														
+	`
+
+	args := []any{asOfDate, buildingID}
+
+	if peopleID != nil {
+		query += " AND p.id = ?"
+		args = append(args, *peopleID)
+	}
+
+	query += " ORDER BY p.id,t.transaction_date asc"
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var customerBalanceDetails []CustomerBalanceDetail
+	for rows.Next() {
+		var customerBalanceDetail CustomerBalanceDetail
+		if err := rows.Scan(
+			&customerBalanceDetail.PeopleID,
+			&customerBalanceDetail.Name,
+			&customerBalanceDetail.AccountID,
+			&customerBalanceDetail.AccountNumber,
+			&customerBalanceDetail.AccountName,
+			&customerBalanceDetail.TransactionDate,
+			&customerBalanceDetail.TransactionNumber,
+			&customerBalanceDetail.Type,
+			&customerBalanceDetail.Memo,
+			&customerBalanceDetail.Debit,
+			&customerBalanceDetail.Credit,
+		); err != nil {
+			return nil, err
+		}
+		customerBalanceDetails = append(customerBalanceDetails, customerBalanceDetail)
+	}
+	return customerBalanceDetails, nil
+}
+
+type TransactionDetail struct {
+	PeopleID          *int
+	Name              *string
+	AccountID         int
+	AccountNumber     int
+	AccountName       string
+	AccountType       string
+	TransactionDate   string
+	TransactionNumber string
+	Type              string
+	Memo              string
+	Debit             *float64
+	Credit            *float64
+}
+
+func (s *ReportStore) GetTransactionDetails(ctx context.Context, buildingID int, startDate string, endDate string, accountID []int, unitID *int) ([]TransactionDetail, error) {
+	query := `
+ SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,at.typeName account_type,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit,s.credit FROM splits s
+LEFT JOIN transactions t on s.transaction_id = t.id
+LEFT JOIN accounts ac on s.account_id = ac.id
+LEFT JOIN account_types as at on ac.account_type = at.id
+LEFT JOIN people p on s.people_id = p.id
+WHERE s.status = '1' and t.transaction_date between ? and ? and t.building_id = 1 
+`
+
+	args := []any{startDate, endDate}
+
+	if len(accountID) > 0 {
+		// 1. Create one ? for each accountID
+		placeholders := make([]string, len(accountID))
+		argsSlice := make([]any, len(accountID))
+		for i, id := range accountID {
+			placeholders[i] = "?"
+			argsSlice[i] = id
+		}
+
+		// 2. Add to query
+		query += " AND ac.id IN (" + strings.Join(placeholders, ",") + ")"
+
+		// 3. Append values to args
+		args = append(args, argsSlice...)
+	}
+
+	if unitID != nil {
+		query += " AND s.unit_id = ?"
+		args = append(args, *unitID)
+	}
+
+	query += " ORDER BY t.transaction_date,ac.account_number asc"
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactionDetails []TransactionDetail
+	for rows.Next() {
+		var transactionDetail TransactionDetail
+		if err := rows.Scan(
+			&transactionDetail.PeopleID,
+			&transactionDetail.Name,
+			&transactionDetail.AccountID,
+			&transactionDetail.AccountNumber,
+			&transactionDetail.AccountName,
+			&transactionDetail.AccountType,
+			&transactionDetail.TransactionDate,
+			&transactionDetail.TransactionNumber,
+			&transactionDetail.Type,
+			&transactionDetail.Memo,
+			&transactionDetail.Debit,
+			&transactionDetail.Credit,
+		); err != nil {
+			return nil, err
+		}
+		transactionDetails = append(transactionDetails, transactionDetail)
+	}
+	return transactionDetails, nil
+}
+
+type PLAccountRow struct {
+	AccountNumber int     `json:"account_number"`
+	AccountName   string  `json:"account_name"`
+	AccountType   string  `json:"typeName"`
+	TotalDebit    float64 `json:"total_debit"`
+	TotalCredit   float64 `json:"total_credit"`
+	Balance       float64 `json:"balance"`
+}
+
+func (s *ReportStore) GetAccountBalanceByAccountType(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]PLAccountRow, error) {
+	query := `
+		SELECT 
+	ac.account_number,
+    ac.account_name,
+    at.typeName,
+    SUM(IFNULL(s.debit, 0)) AS total_debit,
+    SUM(IFNULL(s.credit, 0)) AS total_credit,
+    SUM(
+        CASE 
+            WHEN at.typeStatus = 'debit' THEN IFNULL(s.debit, 0) - IFNULL(s.credit, 0)
+            WHEN at.typeStatus = 'credit' THEN IFNULL(s.credit, 0) - IFNULL(s.debit, 0)
+            ELSE 0
+        END
+    ) AS balance
+FROM splits s
+JOIN accounts ac ON s.account_id = ac.id
+JOIN account_types at ON ac.account_type = at.id
+JOIN transactions t ON s.transaction_id = t.id
+WHERE s.status = '1'
+  AND t.status = '1'
+  AND t.transaction_date BETWEEN ? AND ?
+  AND t.building_id = ?
+  AND at.type = ?
+GROUP BY ac.id, ac.account_name, ac.account_type, at.typeStatus
+ORDER BY ac.account_number;
+	`
+
+	args := []any{startDate, endDate, buildingID, accountType}
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var plAccounts []PLAccountRow
+	for rows.Next() {
+		var plAccount PLAccountRow
+		if err := rows.Scan(
+			&plAccount.AccountNumber,
+			&plAccount.AccountName,
+			&plAccount.AccountType,
+			&plAccount.TotalDebit,
+			&plAccount.TotalCredit,
+			&plAccount.Balance,
+		); err != nil {
+			return nil, err
+		}
+		plAccounts = append(plAccounts, plAccount)
+	}
+	return plAccounts, nil
 }

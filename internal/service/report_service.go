@@ -14,6 +14,9 @@ type ReportStore interface {
 	GetBalanceSheet(ctx context.Context, buildingID int, asOfDate string) ([]store.AccountBalance, error)
 	GetTrialBalance(ctx context.Context, buildingID int, asOfDate string) ([]store.TrialBalanceAccount, error)
 	GetCustomerBalanceSummary(ctx context.Context, buildingID int, asOfDate string) ([]store.CustomerSummary, error)
+	GetCustomerBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) ([]store.CustomerBalanceDetail, error)
+	GetTransactionDetails(ctx context.Context, buildingID int, startDate string, endDate string, accountID []int, unitID *int) ([]store.TransactionDetail, error)
+	GetAccountBalanceByAccountType(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]store.PLAccountRow, error)
 }
 
 type ReportService struct {
@@ -152,7 +155,6 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 
 }
 
-
 func (s *ReportService) GetTrialBalance(ctx context.Context, buildingID int, asOfDate string) (*dto.TrialBalanceResponse, error) {
 	fmt.Println("***************************** asOfDate", asOfDate)
 	fmt.Println("***************************** buildingID", buildingID)
@@ -166,7 +168,7 @@ func (s *ReportService) GetTrialBalance(ctx context.Context, buildingID int, asO
 	totalCredit := 0.0
 
 	for _, account := range accounts {
-		
+
 		// Only include accounts that have debit or credit (active splits)
 		if account.DebitBalance > 0 || account.CreditBalance > 0 {
 			trialBalanceAccounts = append(trialBalanceAccounts, dto.TrialBalanceAccount{
@@ -218,18 +220,428 @@ func (s *ReportService) GetCustomerBalanceSummary(ctx context.Context, buildingI
 	customersList := []dto.CustomerBalance{}
 	for _, customer := range customers {
 		customersList = append(customersList, dto.CustomerBalance{
-			PeopleID: customer.PeopleID,
+			PeopleID:   customer.PeopleID,
 			PeopleName: customer.PeopleName,
-			Balance: customer.Balance,
+			Balance:    customer.Balance,
 		})
 		totalBalance += customer.Balance
 	}
 
 	return &dto.CustomerBalanceSummaryResponse{
-		BuildingID: buildingID,
-		AsOfDate: asOfDate,
-		Customers: customersList,
+		BuildingID:   buildingID,
+		AsOfDate:     asOfDate,
+		Customers:    customersList,
 		TotalBalance: totalBalance,
 	}, nil
-	
+
+}
+
+func (s *ReportService) GetCustomerBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) (*map[string]any, error) {
+	customerBalanceDetails, err := s.reportStore.GetCustomerBalanceDetail(ctx, buildingID, asOfDate, peopleID)
+	if err != nil {
+		return nil, err
+	}
+
+	customerBalanceDetailsList := []CustomerBalanceDetail{}
+	for _, customerBalanceDetail := range customerBalanceDetails {
+		customerBalanceDetailsList = append(customerBalanceDetailsList, CustomerBalanceDetail{
+			PeopleID:          customerBalanceDetail.PeopleID,
+			Name:              customerBalanceDetail.Name,
+			AccountID:         customerBalanceDetail.AccountID,
+			AccountName:       customerBalanceDetail.AccountName,
+			AccountNumber:     customerBalanceDetail.AccountNumber,
+			TransactionDate:   customerBalanceDetail.TransactionDate,
+			TransactionNumber: customerBalanceDetail.TransactionNumber,
+			Type:              customerBalanceDetail.Type,
+			Memo:              customerBalanceDetail.Memo,
+			Debit:             customerBalanceDetail.Debit,
+			Credit:            customerBalanceDetail.Credit,
+		})
+	}
+
+	response := GroupTransactionsWithGrandTotals(customerBalanceDetailsList)
+
+	return &map[string]any{
+		"buildingID":          buildingID,
+		"asOfDate":            asOfDate,
+		"customers":           response.Customers,
+		"grand_total_balance": response.GrandTotalBalance,
+		"grand_total_credit":  response.GrandTotalCredit,
+		"grand_total_debit":   response.GrandTotalDebit,
+	}, nil
+}
+
+type CustomerBalanceDetail struct {
+	PeopleID          int
+	Name              string
+	AccountID         int
+	AccountName       string
+	AccountNumber     int
+	TransactionDate   string
+	TransactionNumber string
+	Type              string
+	Memo              string
+	Debit             *float64
+	Credit            *float64
+}
+
+type Customer struct {
+	PeopleID     int        `json:"people_id"`
+	PeopleName   string     `json:"people_name"`
+	Accounts     []*Account `json:"accounts"`
+	TotalDebit   float64    `json:"total_debit"`
+	TotalCredit  float64    `json:"total_credit"`
+	TotalBalance float64    `json:"total_balance"`
+	IsHeader     bool       `json:"is_header"`
+}
+
+type Account struct {
+	AccountID     int     `json:"account_id"`
+	AccountName   string  `json:"account_name"`
+	AccountNumber int     `json:"account_number"`
+	Splits        []Split `json:"splits,omitempty"`
+	TotalDebit    float64 `json:"total_debit"`
+	TotalCredit   float64 `json:"total_credit"`
+	TotalBalance  float64 `json:"total_balance"`
+}
+
+type Split struct {
+	PeopleID          *int     `json:"people_id"`
+	PeopleName        *string  `json:"people_name"`
+	TransactionNumber string   `json:"transaction_number"`
+	TransactionDate   string   `json:"transaction_date"`
+	TransactionType   string   `json:"transaction_type"`
+	TransactionMemo   string   `json:"transaction_memo"`
+	AccountID         int      `json:"account_id"`
+	AccountName       string   `json:"account_name"`
+	AccountNumber     int      `json:"account_number"`
+	Debit             *float64 `json:"debit"`
+	Credit            *float64 `json:"credit"`
+	Balance           float64  `json:"balance"`
+}
+
+type CustomersResponse struct {
+	Customers         []Customer `json:"customers"`
+	GrandTotalDebit   float64    `json:"grand_total_debit"`
+	GrandTotalCredit  float64    `json:"grand_total_credit"`
+	GrandTotalBalance float64    `json:"grand_total_balance"`
+}
+
+func GroupTransactionsWithGrandTotals(rows []CustomerBalanceDetail) CustomersResponse {
+	customersMap := make(map[int]*Customer)
+	accountMap := make(map[int]map[int]*Account)
+
+	var grandDebit, grandCredit, grandBalance float64
+
+	for _, r := range rows {
+
+		// ---- Customer ----
+		if _, ok := customersMap[r.PeopleID]; !ok {
+			customersMap[r.PeopleID] = &Customer{
+				PeopleID:   r.PeopleID,
+				PeopleName: r.Name,
+				IsHeader:   true,
+			}
+			accountMap[r.PeopleID] = make(map[int]*Account)
+		}
+		customer := customersMap[r.PeopleID]
+
+		// ---- Account ----
+		if _, ok := accountMap[r.PeopleID][r.AccountID]; !ok {
+			account := &Account{
+				AccountID:     r.AccountID,
+				AccountName:   r.AccountName,
+				AccountNumber: r.AccountNumber,
+			}
+			accountMap[r.PeopleID][r.AccountID] = account
+			customer.Accounts = append(customer.Accounts, account)
+		}
+		account := accountMap[r.PeopleID][r.AccountID]
+
+		// ---- Amounts ----
+		var debit, credit float64
+		if r.Debit != nil {
+			debit = *r.Debit
+		}
+		if r.Credit != nil {
+			credit = *r.Credit
+		}
+
+		// ---- Running balance ----
+		balance := debit - credit
+		if len(account.Splits) > 0 {
+			balance += account.Splits[len(account.Splits)-1].Balance
+		}
+
+		// ---- Split ----
+		account.Splits = append(account.Splits, Split{
+			TransactionNumber: r.TransactionNumber,
+			TransactionDate:   r.TransactionDate,
+			TransactionType:   r.Type,
+			TransactionMemo:   r.Memo,
+			AccountID:         r.AccountID,
+			AccountName:       r.AccountName,
+			AccountNumber:     r.AccountNumber,
+			Debit:             r.Debit,
+			Credit:            r.Credit,
+			Balance:           balance,
+		})
+
+		// ---- Totals (Account) ----
+		account.TotalDebit += debit
+		account.TotalCredit += credit
+		account.TotalBalance += debit - credit
+
+		// ---- Totals (Customer) ----
+		customer.TotalDebit += debit
+		customer.TotalCredit += credit
+		customer.TotalBalance += debit - credit
+
+		// ---- Grand totals ----
+		grandDebit += debit
+		grandCredit += credit
+		grandBalance += debit - credit
+	}
+
+	// ---- Map → Slice ----
+	var customers []Customer
+	for _, c := range customersMap {
+		customers = append(customers, *c)
+	}
+
+	return CustomersResponse{
+		Customers:         customers,
+		GrandTotalDebit:   grandDebit,
+		GrandTotalCredit:  grandCredit,
+		GrandTotalBalance: grandBalance,
+	}
+}
+
+// getTransactionDetails
+func (s *ReportService) GetTransactionDetails(ctx context.Context, buildingID int, startDate string, endDate string, accountID []int, unitID *int) (*map[string]any, error) {
+	transactionDetails, err := s.reportStore.GetTransactionDetails(ctx, buildingID, startDate, endDate, accountID, unitID)
+	if err != nil {
+		return nil, err
+	}
+	transactionDetailsList := []TransactionDetail{}
+	for _, transactionDetail := range transactionDetails {
+		transactionDetailsList = append(transactionDetailsList, TransactionDetail{
+			PeopleID:          transactionDetail.PeopleID,
+			Name:              transactionDetail.Name,
+			AccountID:         transactionDetail.AccountID,
+			AccountNumber:     transactionDetail.AccountNumber,
+			AccountName:       transactionDetail.AccountName,
+			AccountType:       transactionDetail.AccountType,
+			TransactionDate:   transactionDetail.TransactionDate,
+			TransactionNumber: transactionDetail.TransactionNumber,
+			Type:              transactionDetail.Type,
+			Memo:              transactionDetail.Memo,
+			Debit:             transactionDetail.Debit,
+			Credit:            transactionDetail.Credit,
+		})
+	}
+
+	response := BuildLedgerResponse(transactionDetailsList, buildingID, startDate, endDate)
+	return &map[string]any{
+		"buildingID":         buildingID,
+		"startDate":          startDate,
+		"endDate":            endDate,
+		"grand_total_debit":  response.GrandTotalDebit,
+		"grand_total_credit": response.GrandTotalCredit,
+		"accounts":           response.Accounts,
+	}, nil
+}
+
+type TransactionDetail struct {
+	PeopleID          *int
+	Name              *string
+	AccountID         int
+	AccountNumber     int
+	AccountName       string
+	AccountType       string
+	TransactionDate   string
+	TransactionNumber string
+	Type              string
+	Memo              string
+	Debit             *float64
+	Credit            *float64
+}
+
+type LedgerResponse struct {
+	BuildingID       int              `json:"building_id"`
+	StartDate        string           `json:"start_date"`
+	EndDate          string           `json:"end_date"`
+	GrandTotalDebit  float64          `json:"grand_total_debit"`
+	GrandTotalCredit float64          `json:"grand_total_credit"`
+	Accounts         []*AccountLedger `json:"accounts"`
+}
+
+type AccountLedger struct {
+	AccountID     int     `json:"account_id"`
+	AccountNumber int     `json:"account_number"`
+	AccountName   string  `json:"account_name"`
+	AccountType   string  `json:"account_type"`
+	Splits        []Split `json:"splits"`
+	TotalDebit    float64 `json:"total_debit"`
+	TotalCredit   float64 `json:"total_credit"`
+	TotalBalance  float64 `json:"total_balance"`
+	IsTotalRow    bool    `json:"is_total_row,omitempty"`
+}
+
+func BuildLedgerResponse(
+	rows []TransactionDetail,
+	buildingID int,
+	startDate, endDate string,
+) LedgerResponse {
+
+	accountMap := make(map[int]*AccountLedger)
+	var accounts []*AccountLedger
+
+	var grandDebit, grandCredit float64
+
+	for _, r := range rows {
+
+		// ---- Account ----
+		if _, ok := accountMap[r.AccountID]; !ok {
+			account := &AccountLedger{
+				AccountID:     r.AccountID,
+				AccountNumber: r.AccountNumber,
+				AccountName:   r.AccountName,
+				AccountType:   r.AccountType,
+				Splits:        []Split{},
+			}
+			accountMap[r.AccountID] = account
+			accounts = append(accounts, account)
+		}
+		account := accountMap[r.AccountID]
+
+		// ---- Amounts ----
+		var debit, credit float64
+		if r.Debit != nil {
+			debit = *r.Debit
+		}
+		if r.Credit != nil {
+			credit = *r.Credit
+		}
+
+		// ---- Running balance ----
+		balance := debit - credit
+		if len(account.Splits) > 0 {
+			balance += account.Splits[len(account.Splits)-1].Balance
+		}
+
+		// ---- Split ----
+		account.Splits = append(account.Splits, Split{
+			TransactionNumber: r.TransactionNumber,
+			TransactionDate:   r.TransactionDate,
+			TransactionType:   r.Type,
+			TransactionMemo:   r.Memo,
+			PeopleID:          r.PeopleID,
+			PeopleName:        r.Name,
+			Debit:             r.Debit,
+			Credit:            r.Credit,
+			Balance:           balance,
+		})
+
+		// ---- Totals ----
+		account.TotalDebit += debit
+		account.TotalCredit += credit
+		account.TotalBalance = balance
+
+		grandDebit += debit
+		grandCredit += credit
+	}
+
+	// ---- Add TOTAL row per account ----
+	var finalAccounts []*AccountLedger
+	for _, acc := range accounts {
+		finalAccounts = append(finalAccounts, acc)
+
+		finalAccounts = append(finalAccounts, &AccountLedger{
+			AccountID:     acc.AccountID,
+			AccountNumber: acc.AccountNumber,
+			AccountName:   "TOTAL",
+			AccountType:   "",
+			Splits:        []Split{},
+			TotalDebit:    acc.TotalDebit,
+			TotalCredit:   acc.TotalCredit,
+			TotalBalance:  acc.TotalBalance,
+			IsTotalRow:    true,
+		})
+	}
+
+	return LedgerResponse{
+		BuildingID:       buildingID,
+		StartDate:        startDate,
+		EndDate:          endDate,
+		GrandTotalDebit:  grandDebit,
+		GrandTotalCredit: grandCredit,
+		Accounts:         finalAccounts,
+	}
+}
+
+// GetProfitAndLossStandard
+func (s *ReportService) GetProfitAndLossStandard(ctx context.Context, buildingID int, startDate string, endDate string) (*PLReport, error) {
+	incomeAccounts, err := s.reportStore.GetAccountBalanceByAccountType(ctx, buildingID, startDate, endDate, "Income")
+	if err != nil {
+		return nil, err
+	}
+
+	expenseAccounts, err := s.reportStore.GetAccountBalanceByAccountType(ctx, buildingID, startDate, endDate, "Expense")
+	if err != nil {
+		return nil, err
+	}
+
+	totalExpense := 0.0
+	for _, expense := range expenseAccounts {
+		totalExpense += expense.Balance
+	}
+
+	totalIncome := 0.0
+	for _, income := range incomeAccounts {
+		totalIncome += income.Balance
+	}
+
+	// initialize with empty []
+	expenseAccountsList := []store.PLAccountRow{}
+	incomeAccountsList := []store.PLAccountRow{}
+	for _, expense := range expenseAccounts {
+		expenseAccountsList = append(expenseAccountsList, expense)
+	}
+	for _, income := range incomeAccounts {
+		incomeAccountsList = append(incomeAccountsList, income)
+	}
+
+	return &PLReport{
+		BuildingID: buildingID,
+		StartDate:  startDate,
+		EndDate:    endDate,
+		Expenses: PLSection{
+			Accounts:    expenseAccountsList,
+			SectionName: "Expense",
+			Total:       totalExpense,
+		},
+		Income: PLSection{
+			Accounts:    incomeAccountsList,
+			SectionName: "Income",
+			Total:       totalIncome,
+		},
+		NetProfitLoss: totalIncome - totalExpense,
+	}, nil
+
+}
+
+type PLSection struct {
+	Accounts    []store.PLAccountRow `json:"accounts"`
+	SectionName string               `json:"section_name"`
+	Total       float64              `json:"total"`
+}
+
+type PLReport struct {
+	BuildingID    int       `json:"building_id"`
+	StartDate     string    `json:"start_date"`
+	EndDate       string    `json:"end_date"`
+	Expenses      PLSection `json:"expenses"`
+	Income        PLSection `json:"income"`
+	NetProfitLoss float64   `json:"net_profit_loss"`
 }
