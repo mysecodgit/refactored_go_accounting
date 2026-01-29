@@ -44,6 +44,34 @@ func (s *BuildingStore) GetAll(ctx context.Context) ([]Building, error) {
 	return buildings, nil
 }
 
+func (s *BuildingStore) GetAllByUserID(ctx context.Context, userID int64) ([]Building, error) {
+	query := `
+		SELECT b.id, b.name, b.created_at, b.updated_at
+		FROM buildings b
+		left join users_building ub on b.id = ub.building_id
+		WHERE ub.user_id = ?
+	`
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var buildings []Building
+	for rows.Next() {
+		var b Building
+		if err := rows.Scan(&b.ID, &b.Name, &b.CreatedAt, &b.UpdatedAt); err != nil {
+			return nil, err
+		}
+		buildings = append(buildings, b)
+	}
+
+	return buildings, nil
+}
+
 func (s *BuildingStore) GetByID(ctx context.Context, id int64) (*Building, error) {
 	query := `
 		SELECT id, name, created_at, updated_at

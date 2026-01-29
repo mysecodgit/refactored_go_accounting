@@ -6,20 +6,49 @@ import (
 )
 
 type User struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Phone    string `json:"phone"`
-	Password string `json:"-"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	Username     string  `json:"username"`
+	Phone        string  `json:"phone"`
+	Password     string  `json:"-"`
+	ParentUserID *int64  `json:"parent_user_id,omitempty"`
 }
 
 type UserStore struct {
 	db *sql.DB
 }
 
+func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
+	query := `
+		SELECT id, name, username, phone, password
+		FROM users
+		WHERE username = ?
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	var u User
+	err := s.db.QueryRowContext(ctx, query, username).Scan(
+		&u.ID,
+		&u.Name,
+		&u.Username,
+		&u.Phone,
+		&u.Password,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &u, nil
+}
+
 func (s *UserStore) GetAll(ctx context.Context) ([]User, error) {
 	query := `
-		SELECT id, name, username, phone
+		SELECT id, name, username, phone, parent_user_id
 		FROM users
 	`
 
@@ -41,6 +70,44 @@ func (s *UserStore) GetAll(ctx context.Context) ([]User, error) {
 			&u.Name,
 			&u.Username,
 			&u.Phone,
+			&u.ParentUserID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		users = append(users, u)
+	}
+
+	return users, nil
+}
+
+func (s *UserStore) GetAllByParentID(ctx context.Context, parentUserID int64) ([]User, error) {
+	query := `
+		SELECT id, name, username, phone, parent_user_id
+		FROM users
+		WHERE parent_user_id = ?
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, parentUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		err := rows.Scan(
+			&u.ID,
+			&u.Name,
+			&u.Username,
+			&u.Phone,
+			&u.ParentUserID,
 		)
 		if err != nil {
 			return nil, err
@@ -57,7 +124,7 @@ GET BY ID
 */
 func (s *UserStore) GetByID(ctx context.Context, id int64) (*User, error) {
 	query := `
-		SELECT id, name, username, phone
+		SELECT id, name, username, phone, parent_user_id
 		FROM users
 		WHERE id = ?
 	`
@@ -71,6 +138,7 @@ func (s *UserStore) GetByID(ctx context.Context, id int64) (*User, error) {
 		&u.Name,
 		&u.Username,
 		&u.Phone,
+		&u.ParentUserID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -84,8 +152,8 @@ func (s *UserStore) GetByID(ctx context.Context, id int64) (*User, error) {
 
 func (s *UserStore) Create(ctx context.Context, user *User) error {
 	query := `
-		INSERT INTO users (name, username, phone, password)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO users (name, username, phone, password, parent_user_id)
+		VALUES (?, ?, ?, ?, ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -98,6 +166,7 @@ func (s *UserStore) Create(ctx context.Context, user *User) error {
 		user.Username,
 		user.Phone,
 		user.Password,
+		user.ParentUserID,
 	)
 	if err != nil {
 		return err
@@ -117,7 +186,8 @@ func (s *UserStore) Update(ctx context.Context, user *User) error {
 		UPDATE users
 		SET name = ?,
 		    username = ?,
-		    phone = ?
+		    phone = ?,
+		    password = ?
 		WHERE id = ?
 	`
 
@@ -130,6 +200,7 @@ func (s *UserStore) Update(ctx context.Context, user *User) error {
 		user.Name,
 		user.Username,
 		user.Phone,
+		user.Password,
 		user.ID,
 	)
 	if err != nil {

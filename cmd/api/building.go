@@ -1,10 +1,15 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/mysecodgit/go_accounting/internal/env"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
 
@@ -16,8 +21,61 @@ type updateBuildingRequest struct {
 	Name string `json:"name" validate:"required"`
 }
 
+func getUserIDFromJWT(r *http.Request, jwtSecret string) (int64, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return 0, errors.New("no token provided")
+	}
+
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
+	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		// Validate signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(jwtSecret), nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	if !token.Valid {
+		return 0, errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, errors.New("invalid claims")
+	}
+
+	sub, ok := claims["sub"]
+	if !ok {
+		return 0, errors.New("sub claim missing")
+	}
+
+	// MapClaims stores numbers as float64
+	userIDFloat, ok := sub.(float64)
+	if !ok {
+		return 0, errors.New("invalid sub claim type")
+	}
+
+	return int64(userIDFloat), nil
+}
+
 func (app *application) getBuildingsHandler(w http.ResponseWriter, r *http.Request) {
-	buildings, err := app.service.Building.GetAll(r.Context())
+	jwtSecret := env.GetString("JWT_SECRET", "dev_secret_change_me")
+	// fetch user id from jwt token
+	userID, err := getUserIDFromJWT(r, jwtSecret)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	fmt.Println("userID", userID)
+	fmt.Println("jwtSecret", jwtSecret)
+
+	buildings, err := app.service.Building.GetAllByUserID(r.Context(), userID)
 	if err != nil {
 		switch err {
 		case store.ErrNotFound:

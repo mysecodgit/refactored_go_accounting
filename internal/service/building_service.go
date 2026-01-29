@@ -8,6 +8,7 @@ import (
 
 type BuildingStore interface {
 	GetAll(ctx context.Context) ([]store.Building, error)
+	GetAllByUserID(ctx context.Context, userID int64) ([]store.Building, error)
 	GetByID(ctx context.Context, id int64) (*store.Building, error)
 	Create(ctx context.Context, building *store.Building) error
 	Update(ctx context.Context, building *store.Building) error
@@ -24,6 +25,10 @@ func NewBuildingService(buildingStore BuildingStore) *BuildingService {
 
 func (s *BuildingService) GetAll(ctx context.Context) ([]store.Building, error) {
 	return s.buildingStore.GetAll(ctx)
+}
+
+func (s *BuildingService) GetAllByUserID(ctx context.Context, userID int64) ([]store.Building, error) {
+	return s.buildingStore.GetAllByUserID(ctx, userID)
 }
 
 func (s *BuildingService) GetByID(ctx context.Context, id int64) (*store.Building, error) {

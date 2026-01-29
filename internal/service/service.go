@@ -7,6 +7,7 @@ import (
 )
 
 type Service struct {
+	Auth           *AuthService
 	User           *UserService
 	Building       *BuildingService
 	Unit           *UnitService
@@ -26,13 +27,16 @@ type Service struct {
 	SalesReceipt   *SalesReceiptService
 	Lease          *LeaseService
 	Report         *ReportService
+	UserBuilding   *UserBuildingService
 }
 
 func NewService(
 	store store.Storage,
 	db *sql.DB,
+	jwtSecret string,
 ) *Service {
 	return &Service{
+		Auth:        NewAuthService(store.User, jwtSecret),
 		User:        NewUserService(store.User),
 		Building:    NewBuildingService(store.Building),
 		Unit:        NewUnitService(store.Unit),
@@ -94,5 +98,6 @@ func NewService(
 			store.Report,
 			store.Unit,
 		),
+		UserBuilding: NewUserBuildingService(store.UserBuilding),
 	}
 }

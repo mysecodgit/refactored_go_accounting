@@ -12,6 +12,8 @@ import (
 const version = "0.0.1"
 
 func main() {
+	jwtSecret := env.GetString("JWT_SECRET", "dev_secret_change_me")
+
 	cfg := config{
 		addr: env.GetString("ADDR", ":8080"),
 		db: dbConfig{
@@ -53,7 +55,7 @@ func main() {
 	logger.Info("database connection pool established.")
 
 	store := store.NewStorage(db)
-	service := service.NewService(store, db)
+	service := service.NewService(store, db, jwtSecret)
 	
 	app := &application{
 		config: cfg,

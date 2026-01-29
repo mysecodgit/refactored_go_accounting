@@ -69,6 +69,8 @@ func (app *application) mount() http.Handler {
 	r.Route("/v1", func(r chi.Router) {
 		r.Get("/health", app.checkHealthHandler)
 
+		r.Post("/auth/login", app.loginHandler)
+
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/", app.getUsersHandler)
 			r.Post("/", app.createUserHandler)
@@ -77,6 +79,8 @@ func (app *application) mount() http.Handler {
 				r.Get("/", app.getUserHandler)
 				r.Put("/", app.updateUserHandler)
 				r.Delete("/", app.deleteUserHandler)
+				r.Post("/buildings", app.assignBuildingToUserHandler)
+				r.Delete("/buildings/{buildingID}", app.unassignBuildingFromUserHandler)
 			})
 		})
 

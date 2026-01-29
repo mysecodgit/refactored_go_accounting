@@ -9,6 +9,7 @@ import (
 // Interface lives here
 type UserStore interface {
 	GetAll(ctx context.Context) ([]store.User, error)
+	GetAllByParentID(ctx context.Context, parentUserID int64) ([]store.User, error)
 	GetByID(ctx context.Context, id int64) (*store.User, error)
 	Create(ctx context.Context, user *store.User) error
 	Update(ctx context.Context, user *store.User) error
@@ -25,6 +26,10 @@ func NewUserService(userStore UserStore) *UserService {
 
 func (s *UserService) GetAll(ctx context.Context) ([]store.User, error) {
 	return s.userStore.GetAll(ctx)
+}
+
+func (s *UserService) GetAllByParentID(ctx context.Context, parentUserID int64) ([]store.User, error) {
+	return s.userStore.GetAllByParentID(ctx, parentUserID)
 }
 
 func (s *UserService) GetByID(ctx context.Context, id int64) (*store.User, error) {
