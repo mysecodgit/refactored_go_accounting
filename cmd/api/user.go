@@ -24,13 +24,18 @@ type updateUserRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
+type BuildingWithRoles struct {
+	store.Building
+	Roles []store.Role `json:"roles"`
+}
+
 type UserWithBuildings struct {
-	ID           int64              `json:"id"`
-	Name         string             `json:"name"`
-	Username     string             `json:"username"`
-	Phone        string             `json:"phone"`
-	ParentUserID *int64             `json:"parent_user_id,omitempty"`
-	Buildings    []store.Building   `json:"buildings"`
+	ID           int64               `json:"id"`
+	Name         string              `json:"name"`
+	Username     string              `json:"username"`
+	Phone        string              `json:"phone"`
+	ParentUserID *int64              `json:"parent_user_id,omitempty"`
+	Buildings    []BuildingWithRoles `json:"buildings"`
 }
 
 func (app *application) getUsersHandler(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +60,7 @@ func (app *application) getUsersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Fetch buildings for each user
+	// Fetch buildings and roles for each user
 	usersWithBuildings := make([]UserWithBuildings, 0, len(users))
 	for _, user := range users {
 		buildings, err := app.service.UserBuilding.GetBuildingsByUserID(r.Context(), user.ID)
@@ -64,13 +69,27 @@ func (app *application) getUsersHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
+		buildingsWithRoles := make([]BuildingWithRoles, 0, len(buildings))
+		for _, building := range buildings {
+			roles, err := app.service.UserBuildingRole.GetRolesByUserAndBuilding(r.Context(), user.ID, building.ID)
+			if err != nil {
+				app.internalServerError(w, r, err)
+				return
+			}
+
+			buildingsWithRoles = append(buildingsWithRoles, BuildingWithRoles{
+				Building: building,
+				Roles:    roles,
+			})
+		}
+
 		usersWithBuildings = append(usersWithBuildings, UserWithBuildings{
 			ID:           user.ID,
 			Name:         user.Name,
 			Username:     user.Username,
 			Phone:        user.Phone,
 			ParentUserID: user.ParentUserID,
-			Buildings:    buildings,
+			Buildings:    buildingsWithRoles,
 		})
 	}
 
@@ -112,11 +131,25 @@ func (app *application) getUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch buildings for the user
+	// Fetch buildings and roles for the user
 	buildings, err := app.service.UserBuilding.GetBuildingsByUserID(r.Context(), user.ID)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
+	}
+
+	buildingsWithRoles := make([]BuildingWithRoles, 0, len(buildings))
+	for _, building := range buildings {
+		roles, err := app.service.UserBuildingRole.GetRolesByUserAndBuilding(r.Context(), user.ID, building.ID)
+		if err != nil {
+			app.internalServerError(w, r, err)
+			return
+		}
+
+		buildingsWithRoles = append(buildingsWithRoles, BuildingWithRoles{
+			Building: building,
+			Roles:    roles,
+		})
 	}
 
 	userWithBuildings := UserWithBuildings{
@@ -125,7 +158,7 @@ func (app *application) getUserHandler(w http.ResponseWriter, r *http.Request) {
 		Username:     user.Username,
 		Phone:        user.Phone,
 		ParentUserID: user.ParentUserID,
-		Buildings:    buildings,
+		Buildings:    buildingsWithRoles,
 	}
 
 	if err := app.jsonResponse(w, http.StatusOK, userWithBuildings); err != nil {

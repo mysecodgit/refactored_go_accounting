@@ -44,6 +44,10 @@ type Storage struct {
 	LeaseFile *LeaseFileStore
 	Report *ReportStore
 	UserBuilding *UserBuildingStore
+	Permission *PermissionStore
+	Role *RoleStore
+	RolePermission *RolePermissionStore
+	UserBuildingRole *UserBuildingRoleStore
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -78,6 +82,10 @@ func NewStorage(db *sql.DB) Storage {
 		LeaseFile: &LeaseFileStore{db},
 		Report: &ReportStore{db},
 		UserBuilding: &UserBuildingStore{db},
+		Permission: &PermissionStore{db},
+		Role: &RoleStore{db},
+		RolePermission: &RolePermissionStore{db},
+		UserBuildingRole: &UserBuildingRoleStore{db},
 	}
 }
 

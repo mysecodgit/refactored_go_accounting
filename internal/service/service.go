@@ -7,27 +7,31 @@ import (
 )
 
 type Service struct {
-	Auth           *AuthService
-	User           *UserService
-	Building       *BuildingService
-	Unit           *UnitService
-	PeopleType     *PeopleTypeService
-	People         *PeopleService
-	AccountType    *AccountTypeService
-	Account        *AccountService
-	Item           *ItemService
-	Invoice        *InvoiceService
-	Reading        *ReadingService
-	CreditMemo     *CreditMemoService
-	Check          *CheckService
-	Bill           *BillService
-	BillPayment    *BillPaymentService
-	Journal        *JournalService
-	InvoicePayment *InvoicePaymentService
-	SalesReceipt   *SalesReceiptService
-	Lease          *LeaseService
-	Report         *ReportService
-	UserBuilding   *UserBuildingService
+	Auth             *AuthService
+	User             *UserService
+	Building         *BuildingService
+	Unit             *UnitService
+	PeopleType       *PeopleTypeService
+	People           *PeopleService
+	AccountType      *AccountTypeService
+	Account          *AccountService
+	Item             *ItemService
+	Invoice          *InvoiceService
+	Reading          *ReadingService
+	CreditMemo       *CreditMemoService
+	Check            *CheckService
+	Bill             *BillService
+	BillPayment      *BillPaymentService
+	Journal          *JournalService
+	InvoicePayment   *InvoicePaymentService
+	SalesReceipt     *SalesReceiptService
+	Lease            *LeaseService
+	Report           *ReportService
+	UserBuilding     *UserBuildingService
+	Permission       *PermissionService
+	Role             *RoleService
+	RolePermission   *RolePermissionService
+	UserBuildingRole *UserBuildingRoleService
 }
 
 func NewService(
@@ -98,6 +102,10 @@ func NewService(
 			store.Report,
 			store.Unit,
 		),
-		UserBuilding: NewUserBuildingService(store.UserBuilding),
+		UserBuilding:     NewUserBuildingService(store.UserBuilding),
+		Permission:       NewPermissionService(store.Permission),
+		Role:             NewRoleService(store.Role),
+		RolePermission:   NewRolePermissionService(store.RolePermission),
+		UserBuildingRole: NewUserBuildingRoleService(store.UserBuildingRole),
 	}
 }

@@ -81,6 +81,35 @@ func (app *application) mount() http.Handler {
 				r.Delete("/", app.deleteUserHandler)
 				r.Post("/buildings", app.assignBuildingToUserHandler)
 				r.Delete("/buildings/{buildingID}", app.unassignBuildingFromUserHandler)
+				r.Route("/buildings/{buildingID}", func(r chi.Router) {
+					r.Post("/roles", app.assignRoleToUserBuildingHandler)
+					r.Delete("/roles/{roleID}", app.unassignRoleFromUserBuildingHandler)
+					r.Get("/roles", app.getUserBuildingRolesHandler)
+				})
+			})
+		})
+
+		r.Route("/permissions", func(r chi.Router) {
+			r.Get("/", app.getPermissionsHandler)
+			r.Post("/", app.createPermissionHandler)
+			r.Route("/{permissionID}", func(r chi.Router) {
+				r.Get("/", app.getPermissionHandler)
+				r.Put("/", app.updatePermissionHandler)
+				r.Delete("/", app.deletePermissionHandler)
+			})
+		})
+
+		r.Route("/roles", func(r chi.Router) {
+			r.Get("/", app.getRolesHandler)
+			r.Post("/", app.createRoleHandler)
+			r.Route("/{roleID}", func(r chi.Router) {
+				r.Get("/", app.getRoleHandler)
+				r.Put("/", app.updateRoleHandler)
+				r.Delete("/", app.deleteRoleHandler)
+				r.Get("/permissions", app.getRolePermissionsHandler)
+				r.Post("/permissions", app.assignPermissionToRoleHandler)
+				r.Delete("/permissions/{permissionID}", app.unassignPermissionFromRoleHandler)
+				r.Put("/permissions", app.setRolePermissionsHandler)
 			})
 		})
 
