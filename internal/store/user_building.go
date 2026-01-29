@@ -72,6 +72,35 @@ func (s *UserBuildingStore) AssignBuilding(ctx context.Context, userID, building
 	return err
 }
 
+func (s *UserBuildingStore) AssignBuildingTX(ctx context.Context, tx *sql.Tx, userID, buildingID int64) error {
+	// Check if assignment already exists
+	checkQuery := `
+		SELECT COUNT(*) FROM users_building
+		WHERE user_id = ? AND building_id = ?
+	`
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
+	defer cancel()
+
+	var count int
+	err := tx.QueryRowContext(ctx, checkQuery, userID, buildingID).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		// Already assigned, return success
+		return nil
+	}
+
+	query := `
+		INSERT INTO users_building (user_id, building_id)
+		VALUES (?, ?)
+	`
+
+	_, err = tx.ExecContext(ctx, query, userID, buildingID)
+	return err
+}
+
 func (s *UserBuildingStore) UnassignBuilding(ctx context.Context, userID, buildingID int64) error {
 	query := `
 		DELETE FROM users_building

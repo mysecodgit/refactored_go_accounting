@@ -42,7 +42,7 @@ func NewService(
 	return &Service{
 		Auth:        NewAuthService(store.User, jwtSecret),
 		User:        NewUserService(store.User),
-		Building:    NewBuildingService(store.Building),
+		Building:    NewBuildingService(db, store.Building, store.UserBuilding),
 		Unit:        NewUnitService(store.Unit),
 		PeopleType:  NewPeopleTypeService(store.PeopleType),
 		People:      NewPeopleService(store.People),

@@ -116,6 +116,14 @@ func (app *application) getBuildingHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (app *application) createBuildingHandler(w http.ResponseWriter, r *http.Request) {
+	jwtSecret := env.GetString("JWT_SECRET", "dev_secret_change_me") // TODO : this is only for development, so we need to remove it in production
+	// fetch user id from jwt token
+	userID, err := getUserIDFromJWT(r, jwtSecret)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
 	var req createBuildingRequest
 	if err := readJSON(w, r, &req); err != nil {
 		app.badRequestError(w, r, err)
@@ -129,7 +137,7 @@ func (app *application) createBuildingHandler(w http.ResponseWriter, r *http.Req
 
 	building := &store.Building{Name: req.Name}
 
-	if err := app.service.Building.Create(r.Context(), building); err != nil {
+	if err := app.service.Building.Create(r.Context(), building, userID); err != nil {
 		app.internalServerError(w, r, err)
 		return
 	}

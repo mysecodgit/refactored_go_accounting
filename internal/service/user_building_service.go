@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
@@ -9,6 +10,7 @@ import (
 type UserBuildingStore interface {
 	GetBuildingsByUserID(ctx context.Context, userID int64) ([]store.Building, error)
 	AssignBuilding(ctx context.Context, userID, buildingID int64) error
+	AssignBuildingTX(ctx context.Context, tx *sql.Tx, userID, buildingID int64) error
 	UnassignBuilding(ctx context.Context, userID, buildingID int64) error
 	GetUsersByBuildingID(ctx context.Context, buildingID int64) ([]store.User, error)
 }

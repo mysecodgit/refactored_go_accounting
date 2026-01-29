@@ -94,7 +94,7 @@ func (s *BuildingStore) GetByID(ctx context.Context, id int64) (*Building, error
 	return &b, nil
 }
 
-func (s *BuildingStore) Create(ctx context.Context, building *Building) error {
+func (s *BuildingStore) Create(ctx context.Context, tx *sql.Tx, building *Building) error {
 	query := `
 		INSERT INTO buildings (name)
 		VALUES (?)
@@ -103,7 +103,7 @@ func (s *BuildingStore) Create(ctx context.Context, building *Building) error {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
 
-	result, err := s.db.ExecContext(ctx, query, building.Name)
+	result, err := tx.ExecContext(ctx, query, building.Name)
 	if err != nil {
 		return err
 	}
