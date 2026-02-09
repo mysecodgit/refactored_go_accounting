@@ -7,12 +7,13 @@ import (
 	"math"
 	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
 
 type InvoiceStore interface {
-	GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]store.InvoiceListResponse, error)
+	GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]store.InvoiceSummary, error)
 	GetByID(ctx context.Context, id int64) (*store.Invoice, error)
 	Create(ctx context.Context, tx *sql.Tx, invoice *store.Invoice) (*int64, error)
 	Update(ctx context.Context, tx *sql.Tx, invoice *store.Invoice) (*int64, error)
@@ -104,8 +105,38 @@ func NewInvoiceService(
 	}
 }
 
-func (s *InvoiceService) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]store.InvoiceListResponse, error) {
-	return s.invoiceStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+func (s *InvoiceService) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]dto.InvoiceListResponse, error) {
+	invoices, err := s.invoiceStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+	if err != nil {
+		return nil, err
+	}
+	var invoiceListResponses []dto.InvoiceListResponse
+	for _, invoice := range invoices {
+		invoiceListResponses = append(invoiceListResponses, dto.InvoiceListResponse{
+			ID:                    invoice.ID,
+			InvoiceNo:             invoice.InvoiceNo,
+			TransactionID:         invoice.TransactionID,
+			SalesDate:             invoice.SalesDate,
+			DueDate:               invoice.DueDate,
+			ARAccountID:           invoice.ARAccountID,
+			UnitID:                invoice.UnitID,
+			PeopleID:              invoice.PeopleID,
+			UserID:                invoice.UserID,
+			Amount:                money.FormatMoneyFromCents(invoice.AmountCents),
+			Description:           invoice.Description,
+			CancelReason:          invoice.CancelReason,
+			Status:                invoice.Status,
+			BuildingID:            invoice.BuildingID,
+			CreatedAt:             invoice.CreatedAt,
+			UpdatedAt:             invoice.UpdatedAt,
+			PaidAmount:            invoice.PaidAmount,
+			AppliedCreditsTotal:   invoice.AppliedCreditsTotal,
+			AppliedDiscountsTotal: invoice.AppliedDiscountsTotal,
+			People:                invoice.People,
+			Unit:                  invoice.Unit,
+		})
+	}
+	return invoiceListResponses, nil
 }
 
 func (s *InvoiceService) GetByID(ctx context.Context, id int64) (map[string]any, error) {
@@ -116,6 +147,41 @@ func (s *InvoiceService) GetByID(ctx context.Context, id int64) (map[string]any,
 	invoiceItems, err := s.invoiceItemStore.GetAllByInvoiceID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	var invoiceItemsDto []dto.InvoiceItemDto
+	for _, item := range invoiceItems {
+		var previousValue *string = nil
+		var currentValue *string = nil
+		if item.PreviousValueCents != nil {
+			previousValueStr := money.FormatScaled5(*item.PreviousValueCents)
+			previousValue = &previousValueStr
+		}
+		if item.CurrentValueCents != nil {
+			currentValueStr := money.FormatScaled5(*item.CurrentValueCents)
+			currentValue = &currentValueStr
+		}
+
+		fmt.Println("*********************** previousValue", item.PreviousValueCents)
+		fmt.Println("*********************** currentValue", item.CurrentValueCents)
+
+		//item qty print
+		fmt.Println("*********************** item.QtyScaled", item.QtyScaled)
+		fmt.Println("*********************** item.RateScaled", item.RateScaled)
+		fmt.Println("*********************** item.TotalCents", item.TotalCents)
+
+		invoiceItemsDto = append(invoiceItemsDto, dto.InvoiceItemDto{
+			ID:            item.ID,
+			InvoiceID:     item.InvoiceID,
+			ItemID:        item.ItemID,
+			ItemName:      item.ItemName,
+			PreviousValue: previousValue,
+			CurrentValue:  currentValue,
+			Qty:           money.FormatScaled5(item.QtyScaled),
+			Rate:          money.FormatScaled5(item.RateScaled),
+			Total:         money.FormatMoneyFromCents(item.TotalCents),
+			Status:        item.Status,
+		})
 	}
 	appliedCredits, err := s.invoiceAppliedCreditStore.GetAllByInvoiceID(ctx, id)
 	if err != nil {
@@ -136,13 +202,63 @@ func (s *InvoiceService) GetByID(ctx context.Context, id int64) (map[string]any,
 	if err != nil {
 		return nil, err
 	}
+
+	var splitsDto []dto.SplitDto
+	for _, split := range splits {
+		var debit *string = nil
+		var credit *string = nil
+		if split.DebitCents != nil {
+			debitStr := money.FormatMoneyFromCents(*split.DebitCents)
+			debit = &debitStr
+		}
+		if split.CreditCents != nil {
+			creditStr := money.FormatMoneyFromCents(*split.CreditCents)
+			credit = &creditStr
+		}
+
+		splitsDto = append(splitsDto, dto.SplitDto{
+			ID:            split.ID,
+			TransactionID: split.TransactionID,
+			AccountID:     split.AccountID,
+			Debit:         debit,
+			Credit:        credit,
+			UnitID:        split.UnitID,
+			PeopleID:      split.PeopleID,
+			Status:        split.Status,
+			CreatedAt:     split.CreatedAt,
+			UpdatedAt:     split.UpdatedAt,
+			Account:       split.Account,
+			Unit:          split.Unit,
+			People:        split.People,
+		})
+	}
 	return map[string]any{
-		"invoice":          invoice,
-		"items":            invoiceItems,
+		"invoice": dto.InvoiceDto{
+			ID:            invoice.ID,
+			InvoiceNo:     invoice.InvoiceNo,
+			TransactionID: invoice.TransactionID,
+			SalesDate:     invoice.SalesDate,
+			DueDate:       invoice.DueDate,
+			ARAccountID:   invoice.ARAccountID,
+			UnitID:        invoice.UnitID,
+			PeopleID:      invoice.PeopleID,
+			UserID:        invoice.UserID,
+			Amount:        money.FormatMoneyFromCents(invoice.AmountCents),
+			Description:   invoice.Description,
+			CancelReason:  invoice.CancelReason,
+			Status:        invoice.Status,
+			BuildingID:    invoice.BuildingID,
+			CreatedAt:     invoice.CreatedAt,
+			UpdatedAt:     invoice.UpdatedAt,
+			ARAccount:     invoice.ARAccount,
+			Unit:          invoice.Unit,
+			People:        invoice.People,
+		},
+		"items":            invoiceItemsDto,
 		"appliedCredits":   appliedCredits,
 		"appliedDiscounts": appliedDiscounts,
 		"payments":         payments,
-		"splits":           splits,
+		"splits":           splitsDto,
 	}, nil
 }
 
@@ -178,6 +294,7 @@ func (s *InvoiceService) Create(ctx context.Context, invoiceDTO dto.CreateInvoic
 		}
 		transactionId, err := s.transactionStore.Create(ctx, tx, transaction)
 		if err != nil {
+			fmt.Println("*********************** error creating transaction", err)
 			return err
 		}
 
@@ -185,10 +302,12 @@ func (s *InvoiceService) Create(ctx context.Context, invoiceDTO dto.CreateInvoic
 
 		splits, err := s.GenerateInvoiceSplits(ctx, invoiceDTO.InvoicePayloadDTO)
 		if err != nil {
+			fmt.Println("*********************** error generating splits", err)
 			return err
 		}
 
 		if err := validateBalanced(splits); err != nil {
+			fmt.Println("*********************** error validating splits", err)
 			return err
 		}
 
@@ -196,8 +315,15 @@ func (s *InvoiceService) Create(ctx context.Context, invoiceDTO dto.CreateInvoic
 			split.TransactionID = *transactionId
 			err := s.splitStore.Create(ctx, tx, &split)
 			if err != nil {
+				fmt.Println("*********************** error creating splits", err)
 				return err
 			}
+		}
+
+		amountCents, err := money.ParseUSDAmount(strconv.FormatFloat(invoiceDTO.Amount, 'f', -1, 64))
+		if err != nil {
+			fmt.Println("*********************** error parsing amount", err)
+			return err
 		}
 
 		// create invoice
@@ -210,6 +336,7 @@ func (s *InvoiceService) Create(ctx context.Context, invoiceDTO dto.CreateInvoic
 			PeopleID:      &invoiceDTO.PeopleID,
 			ARAccountID:   invoiceDTO.ARAccountID,
 			Amount:        invoiceDTO.Amount,
+			AmountCents:   amountCents, // TODO : make the amount string on request
 			Description:   invoiceDTO.Description,
 			Status:        invoiceDTO.Status,
 			BuildingID:    invoiceDTO.BuildingID,
@@ -218,6 +345,7 @@ func (s *InvoiceService) Create(ctx context.Context, invoiceDTO dto.CreateInvoic
 
 		invoiceId, err := s.invoiceStore.Create(ctx, tx, invoice)
 		if err != nil {
+			fmt.Println("*********************** error converting line input", err)
 			return err
 		}
 
@@ -228,19 +356,48 @@ func (s *InvoiceService) Create(ctx context.Context, invoiceDTO dto.CreateInvoic
 				return err
 			}
 
+			var previousValue *string = nil
+			var currentValue *string = nil
+			if item.PreviousValue != nil {
+				previousValueStr := strconv.FormatFloat(*item.PreviousValue, 'f', -1, 64)
+				previousValue = &previousValueStr
+			}
+			if item.CurrentValue != nil {
+				currentValueStr := strconv.FormatFloat(*item.CurrentValue, 'f', -1, 64)
+				currentValue = &currentValueStr
+			}
+
+			lineResult, err := money.ConvertLineInput(money.LineInput{
+				Qty:           strconv.FormatFloat(item.Qty, 'f', -1, 64),
+				Rate:          strconv.FormatFloat(item.Rate, 'f', -1, 64),
+				PreviousValue: previousValue,
+				CurrentValue:  currentValue,
+			})
+
+			if err != nil {
+				fmt.Println("*********************** error converting line input", err)
+				return err
+			}
+
 			invoiceItem := &store.InvoiceItem{
-				InvoiceID:     *invoiceId,
-				ItemID:        item.ItemID,
-				Qty:           item.Qty,
-				Rate:          item.Rate,
-				Total:         item.Total,
-				PreviousValue: item.PreviousValue,
-				CurrentValue:  item.CurrentValue,
-				ItemName:      itemrow.Name,
+				InvoiceID:          *invoiceId,
+				ItemID:             item.ItemID,
+				Qty:                item.Qty,
+				Rate:               item.Rate,
+				Total:              item.Total,
+				PreviousValue:      item.PreviousValue,
+				CurrentValue:       item.CurrentValue,
+				ItemName:           itemrow.Name,
+				QtyScaled:          lineResult.QtyScaled,
+				RateScaled:         lineResult.RateScaled,
+				TotalCents:         lineResult.TotalCents,
+				PreviousValueCents: lineResult.PreviousValueScaled,
+				CurrentValueCents:  lineResult.CurrentValueScaled,
 			}
 
 			err = s.invoiceItemStore.Create(ctx, tx, invoiceItem)
 			if err != nil {
+				fmt.Println("*********************** error creating invoice item", err)
 				return err
 			}
 		}
@@ -309,6 +466,12 @@ func (s *InvoiceService) Update(ctx context.Context, invoiceDTO dto.UpdateInvoic
 			}
 		}
 
+		amountCents, err := money.ParseUSDAmount(strconv.FormatFloat(invoiceDTO.Amount, 'f', -1, 64))
+		if err != nil {
+			fmt.Println("*********************** error parsing amount", err)
+			return err
+		}
+
 		// update invoice
 		invoice := &store.Invoice{
 			ID:            existingInvoice.ID,
@@ -320,6 +483,7 @@ func (s *InvoiceService) Update(ctx context.Context, invoiceDTO dto.UpdateInvoic
 			PeopleID:      &invoiceDTO.PeopleID,
 			ARAccountID:   invoiceDTO.ARAccountID,
 			Amount:        invoiceDTO.Amount,
+			AmountCents:   amountCents, // TODO : make the amount string on request
 			Description:   invoiceDTO.Description,
 			BuildingID:    invoiceDTO.BuildingID,
 			UserID:        1, // TODO: get user id from jwt
@@ -346,15 +510,38 @@ func (s *InvoiceService) Update(ctx context.Context, invoiceDTO dto.UpdateInvoic
 				return err
 			}
 
+			var previousValue *string = nil
+			var currentValue *string = nil
+			if item.PreviousValue != nil {
+				previousValueStr := strconv.FormatFloat(*item.PreviousValue, 'f', -1, 64)
+				previousValue = &previousValueStr
+			}
+			if item.CurrentValue != nil {
+				currentValueStr := strconv.FormatFloat(*item.CurrentValue, 'f', -1, 64)
+				currentValue = &currentValueStr
+			}
+
+			lineResult, err := money.ConvertLineInput(money.LineInput{
+				Qty:           strconv.FormatFloat(item.Qty, 'f', -1, 64),
+				Rate:          strconv.FormatFloat(item.Rate, 'f', -1, 64),
+				PreviousValue: previousValue,
+				CurrentValue:  currentValue,
+			})
+
 			invoiceItem := &store.InvoiceItem{
-				InvoiceID:     *invoiceId,
-				ItemID:        item.ItemID,
-				Qty:           item.Qty,
-				Rate:          item.Rate,
-				Total:         item.Total,
-				PreviousValue: item.PreviousValue,
-				CurrentValue:  item.CurrentValue,
-				ItemName:      itemrow.Name,
+				InvoiceID:          *invoiceId,
+				ItemID:             item.ItemID,
+				Qty:                item.Qty,
+				Rate:               item.Rate,
+				Total:              item.Total,
+				PreviousValue:      item.PreviousValue,
+				CurrentValue:       item.CurrentValue,
+				ItemName:           itemrow.Name,
+				QtyScaled:          lineResult.QtyScaled,
+				RateScaled:         lineResult.RateScaled,
+				TotalCents:         lineResult.TotalCents,
+				PreviousValueCents: lineResult.PreviousValueScaled,
+				CurrentValueCents:  lineResult.CurrentValueScaled,
 			}
 
 			err = s.invoiceItemStore.Create(ctx, tx, invoiceItem)
@@ -370,8 +557,10 @@ func (s *InvoiceService) Update(ctx context.Context, invoiceDTO dto.UpdateInvoic
 }
 
 type splitAccumulator struct {
-	Debit  float64
-	Credit float64
+	Debit       float64
+	Credit      float64
+	DebitCents  int64
+	CreditCents int64
 }
 
 func (s *InvoiceService) GenerateInvoiceSplits(
@@ -382,22 +571,24 @@ func (s *InvoiceService) GenerateInvoiceSplits(
 	acc := make(map[int64]*splitAccumulator)
 
 	// Helper function
-	addDebit := func(accountID int64, amount float64) {
+	addDebit := func(accountID int64, amount float64, amountCents int64) {
 		if acc[accountID] == nil {
 			acc[accountID] = &splitAccumulator{}
 		}
 		acc[accountID].Debit += amount
+		acc[accountID].DebitCents += amountCents
 	}
 
-	addCredit := func(accountID int64, amount float64) {
+	addCredit := func(accountID int64, amount float64, amountCents int64) {
 		if acc[accountID] == nil {
 			acc[accountID] = &splitAccumulator{}
 		}
 		acc[accountID].Credit += amount
+		acc[accountID].CreditCents += amountCents
 	}
 
 	// 1. AR Debit
-	addDebit(int64(req.ARAccountID), req.Amount)
+	var amountCents int64 = 0
 
 	// 2. Item lines
 	for _, line := range req.Items {
@@ -407,51 +598,65 @@ func (s *InvoiceService) GenerateInvoiceSplits(
 			return nil, err
 		}
 
+		lineResult, err := money.ConvertLineInput(money.LineInput{Qty: strconv.FormatFloat(line.Qty, 'f', -1, 64), Rate: strconv.FormatFloat(line.Rate, 'f', -1, 64)})
+		if err != nil {
+			return nil, err
+		}
+
+		amountCents += lineResult.TotalCents
+
 		lineTotal := line.Total
 		if lineTotal == 0 {
 			lineTotal = line.Qty * line.Rate
 		}
 
+		totalCents := lineResult.TotalCents
+
 		switch item.Type {
 
 		case "service":
-			addCredit(*item.IncomeAccount, lineTotal)
+			addCredit(*item.IncomeAccount, lineTotal, totalCents)
 
 		case "discount":
-			addDebit(*item.IncomeAccount, lineTotal)
+			addDebit(*item.IncomeAccount, lineTotal, totalCents)
 
 		case "payment":
 			// reduces AR via asset account
-			addCredit(*item.AssetAccount, lineTotal)
+			addCredit(*item.AssetAccount, lineTotal, totalCents)
 
 		default:
 			return nil, fmt.Errorf("unsupported item type: %s", item.Type)
 		}
 	}
 
+	addDebit(int64(req.ARAccountID), req.Amount, amountCents)
 	// 3. Build splits
 	splits := make([]store.Split, 0, len(acc))
 
 	for accountID, v := range acc {
 
 		var debit, credit *float64
-
+		var debitCents, creditCents *int64
 		if v.Debit > 0 {
 			d := v.Debit
 			debit = &d
+			debitCents = &v.DebitCents
 		}
 		if v.Credit > 0 {
 			c := v.Credit
 			credit = &c
+			creditCents = &v.CreditCents
 		}
 
 		splits = append(splits, store.Split{
-			AccountID: accountID,
-			Debit:     debit,
-			Credit:    credit,
-			UnitID:    &req.UnitID,
-			PeopleID:  &req.PeopleID,
-			Status:    "1",
+			AccountID:   accountID,
+			Debit:       debit,
+			Credit:      credit,
+			DebitCents:  debitCents,
+			CreditCents: creditCents,
+			UnitID:      &req.UnitID,
+			PeopleID:    &req.PeopleID,
+			Status:      "1",
 		})
 	}
 
@@ -460,7 +665,7 @@ func (s *InvoiceService) GenerateInvoiceSplits(
 
 func validateBalanced(splits []store.Split) error {
 	var debit, credit float64
-
+	var debitCents, creditCents int64
 	for _, s := range splits {
 		if s.Debit != nil {
 			debit += *s.Debit
@@ -468,10 +673,20 @@ func validateBalanced(splits []store.Split) error {
 		if s.Credit != nil {
 			credit += *s.Credit
 		}
+		if s.DebitCents != nil {
+			debitCents += *s.DebitCents
+		}
+		if s.CreditCents != nil {
+			creditCents += *s.CreditCents
+		}
 	}
 
 	if math.Abs(debit-credit) > 0.0001 {
 		return fmt.Errorf("unbalanced entry: debit %.2f ≠ credit %.2f", debit, credit)
+	}
+
+	if debitCents != creditCents {
+		return fmt.Errorf("unbalanced entry: debit cents %d ≠ credit cents %d", debitCents, creditCents)
 	}
 
 	return nil

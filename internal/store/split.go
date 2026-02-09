@@ -13,16 +13,18 @@ type Split struct {
 	AccountID     int64    `json:"account_id"`
 	Debit         *float64 `json:"debit"`
 	Credit        *float64 `json:"credit"`
-	UnitID        *int64    `json:"unit_id"`
-	PeopleID      *int64    `json:"people_id"`
+	UnitID        *int64   `json:"unit_id"`
+	PeopleID      *int64   `json:"people_id"`
 	Status        string   `json:"status"`
 	CreatedAt     string   `json:"created_at"`
 	UpdatedAt     string   `json:"updated_at"`
+	DebitCents    *int64   `json:"debit_cents"`
+	CreditCents   *int64   `json:"credit_cents"`
 
 	// relationships
 	Account Account `json:"account"`
-	Unit Unit `json:"unit"`
-	People People `json:"people"`
+	Unit    Unit    `json:"unit"`
+	People  People  `json:"people"`
 }
 
 type SplitStore struct {
@@ -37,7 +39,7 @@ func NewSplitStore(db *sql.DB) *SplitStore {
 func (s *SplitStore) GetAll(ctx context.Context, transactionID int64) ([]Split, error) {
 	query := `
 		SELECT sp.id, sp.transaction_id, sp.account_id, sp.debit,sp.credit,sp.unit_id,sp.people_id, sp.status, sp.created_at, sp.updated_at,
-		a.account_name,u.name unit_name,p.name people_name
+		a.account_name,u.name unit_name,p.name people_name, sp.debit_cents, sp.credit_cents
 		FROM splits sp
 		LEFT JOIN accounts a ON a.id = sp.account_id
 		LEFT JOIN units u ON u.id = sp.unit_id
@@ -72,6 +74,8 @@ func (s *SplitStore) GetAll(ctx context.Context, transactionID int64) ([]Split, 
 			&sp.Account.AccountName,
 			&sp.Unit.Name,
 			&sp.People.Name,
+			&sp.DebitCents,
+			&sp.CreditCents,
 		); err != nil {
 			return nil, err
 		}
@@ -84,7 +88,7 @@ func (s *SplitStore) GetAll(ctx context.Context, transactionID int64) ([]Split, 
 // GetByID returns a single split by ID
 func (s *SplitStore) GetByID(ctx context.Context, id int64) (*Split, error) {
 	query := `
-		SELECT id, transaction_id, account_id, debit,credit,unit_id,people_id, status, created_at, updated_at
+		SELECT id, transaction_id, account_id, debit,credit,unit_id,people_id, status, created_at, updated_at, debit_cents, credit_cents
 		FROM splits
 		WHERE id = ?
 	`
@@ -104,6 +108,8 @@ func (s *SplitStore) GetByID(ctx context.Context, id int64) (*Split, error) {
 		&sp.Status,
 		&sp.CreatedAt,
 		&sp.UpdatedAt,
+		&sp.DebitCents,
+		&sp.CreditCents,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -118,7 +124,7 @@ func (s *SplitStore) GetByID(ctx context.Context, id int64) (*Split, error) {
 func (s *SplitStore) GetByTransactionID(ctx context.Context, transactionID int64) ([]Split, error) {
 
 	query := `
-		SELECT id, transaction_id, account_id, debit,credit,unit_id,people_id, status, created_at, updated_at
+		SELECT id, transaction_id, account_id, debit,credit,unit_id,people_id, status, created_at, updated_at, debit_cents, credit_cents
 		FROM splits
 		WHERE transaction_id = ?
 	`
@@ -148,6 +154,8 @@ func (s *SplitStore) GetByTransactionID(ctx context.Context, transactionID int64
 			&sp.Status,
 			&sp.CreatedAt,
 			&sp.UpdatedAt,
+			&sp.DebitCents,
+			&sp.CreditCents,
 		); err != nil {
 			return nil, err
 		}
@@ -160,8 +168,8 @@ func (s *SplitStore) GetByTransactionID(ctx context.Context, transactionID int64
 // Create inserts a new split
 func (s *SplitStore) Create(ctx context.Context, tx *sql.Tx, sp *Split) error {
 	query := `
-		INSERT INTO splits (transaction_id, account_id, debit, credit, unit_id, people_id, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO splits (transaction_id, account_id, debit, credit, unit_id, people_id, status, debit_cents, credit_cents)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -180,6 +188,8 @@ func (s *SplitStore) Create(ctx context.Context, tx *sql.Tx, sp *Split) error {
 		sp.UnitID,
 		sp.PeopleID,
 		sp.Status,
+		sp.DebitCents,
+		sp.CreditCents,
 	)
 	if err != nil {
 		return err
@@ -198,7 +208,7 @@ func (s *SplitStore) Create(ctx context.Context, tx *sql.Tx, sp *Split) error {
 func (s *SplitStore) Update(ctx context.Context, sp *Split) error {
 	query := `
 		UPDATE splits
-		SET transaction_id = ?, account_id = ?, amount = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+		SET transaction_id = ?, account_id = ?, amount = ?, description = ?, updated_at = CURRENT_TIMESTAMP, debit_cents = ?, credit_cents = ?
 		WHERE id = ?
 	`
 
@@ -211,6 +221,8 @@ func (s *SplitStore) Update(ctx context.Context, sp *Split) error {
 		sp.TransactionID,
 		sp.AccountID,
 		sp.ID,
+		sp.DebitCents,
+		sp.CreditCents,
 	)
 	if err != nil {
 		return err
@@ -275,4 +287,3 @@ func (s *SplitStore) DeleteByTransactionID(ctx context.Context, tx *sql.Tx, tran
 
 	return nil
 }
-

@@ -1,0 +1,14 @@
+migration command
+========================
+
+migrate create -seq -ext sql -dir ./cmd/migrate/migrations create_user_table
+
+- migrate up
+migrate -path=./cmd/migrate/migrations -database="mysql://root:@tcp(localhost:3306)/demo_accounting_demo?multiStatements=true" up
+
+-migrate down
+migrate -path=./cmd/migrate/migrations -database="mysql://root:@tcp(localhost:3306)/demo_accounting_demo?multiStatements=true" down
+
+-seed
+	go run cmd/migrate/seed/main.go
+    

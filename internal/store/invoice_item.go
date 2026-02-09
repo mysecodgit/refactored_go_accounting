@@ -20,6 +20,12 @@ type InvoiceItem struct {
 	Total  float64 `json:"total"`
 	Status *int    `json:"status"` // enum('0','1')
 
+	QtyScaled          int64  `json:"qty_scaled"`
+	RateScaled         int64  `json:"rate_scaled"`
+	TotalCents         int64  `json:"total_cents"`
+	PreviousValueCents *int64 `json:"previous_value_cents"`
+	CurrentValueCents  *int64 `json:"current_value_cents"`
+
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -36,7 +42,7 @@ func (s *InvoiceItemStore) GetAllByInvoiceID(ctx context.Context, invoiceID int6
 	query := `
 		SELECT id, invoice_id, item_id, item_name,
 		       previous_value, current_value, qty, rate,
-		       total, status, created_at, updated_at
+		       total, status, created_at, updated_at, qty_scaled, rate_scaled, total_cents, previous_value_cents, current_value_cents
 		FROM invoice_items
 		WHERE invoice_id = ?
 	`
@@ -66,6 +72,11 @@ func (s *InvoiceItemStore) GetAllByInvoiceID(ctx context.Context, invoiceID int6
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.QtyScaled,
+			&i.RateScaled,
+			&i.TotalCents,
+			&i.PreviousValueCents,
+			&i.CurrentValueCents,
 		); err != nil {
 			return nil, err
 		}
@@ -79,7 +90,7 @@ func (s *InvoiceItemStore) GetByID(ctx context.Context, id int64) (*InvoiceItem,
 	query := `
 		SELECT id, invoice_id, item_id, item_name,
 		       previous_value, current_value, qty, rate,
-		       total, status, created_at, updated_at
+		       total, status, created_at, updated_at, qty_scaled, rate_scaled, total_cents, previous_value_cents, current_value_cents
 		FROM invoice_items
 		WHERE id = ?
 	`
@@ -101,6 +112,11 @@ func (s *InvoiceItemStore) GetByID(ctx context.Context, id int64) (*InvoiceItem,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QtyScaled,
+		&i.RateScaled,
+		&i.TotalCents,
+		&i.PreviousValueCents,
+		&i.CurrentValueCents,
 	)
 
 	if err != nil {
@@ -118,8 +134,8 @@ func (s *InvoiceItemStore) Create(ctx context.Context, tx *sql.Tx, i *InvoiceIte
 		INSERT INTO invoice_items
 		(invoice_id, item_id, item_name,
 		 previous_value, current_value, qty, rate,
-		 total, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 total, status, qty_scaled, rate_scaled, total_cents, previous_value_cents, current_value_cents)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -137,6 +153,11 @@ func (s *InvoiceItemStore) Create(ctx context.Context, tx *sql.Tx, i *InvoiceIte
 		i.Rate,
 		i.Total,
 		"1",
+		i.QtyScaled,
+		i.RateScaled,
+		i.TotalCents,
+		i.PreviousValueCents,
+		i.CurrentValueCents,
 	)
 	if err != nil {
 		return err
@@ -156,7 +177,7 @@ func (s *InvoiceItemStore) Update(ctx context.Context, i *InvoiceItem) error {
 		UPDATE invoice_items
 		SET invoice_id = ?, item_id = ?, item_name = ?,
 		    previous_value = ?, current_value = ?, qty = ?, rate = ?,
-		    total = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+		    total = ?, status = ?, qty_scaled = ?, rate_scaled = ?, total_cents = ?, previous_value_cents = ?, current_value_cents = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
 
@@ -176,6 +197,11 @@ func (s *InvoiceItemStore) Update(ctx context.Context, i *InvoiceItem) error {
 		i.Total,
 		i.Status,
 		i.ID,
+		i.QtyScaled,
+		i.RateScaled,
+		i.TotalCents,
+		i.PreviousValueCents,
+		i.CurrentValueCents,
 	)
 	if err != nil {
 		return err

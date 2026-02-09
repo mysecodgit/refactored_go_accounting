@@ -18,6 +18,7 @@ type Invoice struct {
 
 	UserID       int64   `json:"user_id"`
 	Amount       float64 `json:"amount"`
+	AmountCents  int64   `json:"amount_cents"`
 	Description  string  `json:"description"`
 	CancelReason *string `json:"cancel_reason"`
 
@@ -41,7 +42,9 @@ func NewInvoiceStore(db *sql.DB) *InvoiceStore {
 	return &InvoiceStore{db: db}
 }
 
-type InvoiceListResponse struct {
+
+
+type InvoiceSummary struct {
 	ID                  int     `json:"id"`
 	InvoiceNo           string  `json:"invoice_no"`
 	TransactionID       int     `json:"transaction_id"`
@@ -52,6 +55,7 @@ type InvoiceListResponse struct {
 	PeopleID            *int    `json:"people_id"`
 	UserID              int     `json:"user_id"`
 	Amount              float64 `json:"amount"`
+	AmountCents         int64   `json:"amount_cents"`
 	Description         string  `json:"description"`
 	CancelReason        *string `json:"cancel_reason"`
 	Status              int     `json:"status"`
@@ -65,11 +69,11 @@ type InvoiceListResponse struct {
 	Unit                Unit    `json:"unit"`
 }
 
-func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]InvoiceListResponse, error) {
+func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]InvoiceSummary, error) {
 	query := `
 		SELECT 
 			i.id, i.invoice_no, i.transaction_id, i.sales_date, i.due_date, 
-			i.ar_account_id, i.unit_id, i.people_id, i.user_id, i.amount, 
+			i.ar_account_id, i.unit_id, i.people_id, i.user_id, i.amount, i.amount_cents,
 			i.description, i.cancel_reason, i.status, i.building_id, 
 			i.createdAt, i.updatedAt,
 			COALESCE((
@@ -131,12 +135,12 @@ func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 	}
 	defer rows.Close()
 
-	var invoices []InvoiceListResponse
+	var invoices []InvoiceSummary
 	for rows.Next() {
-		var invoice InvoiceListResponse
+		var invoice InvoiceSummary
 		if err := rows.Scan(
 			&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate,
-			&invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount,
+			&invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.AmountCents,
 			&invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID,
 			&invoice.CreatedAt, &invoice.UpdatedAt,
 			&invoice.PaidAmount, &invoice.AppliedCreditsTotal,
@@ -156,7 +160,7 @@ func (s *InvoiceStore) GetByID(ctx context.Context, id int64) (*Invoice, error) 
 	query := `
 		SELECT i.id, i.invoice_no, i.transaction_id, i.sales_date, i.due_date,
 		       i.ar_account_id, i.unit_id, i.people_id, i.user_id,
-		       i.amount, i.description, i.cancel_reason, i.status,
+		       i.amount, i.amount_cents, i.description, i.cancel_reason, i.status,
 		       i.building_id, i.createdAt, i.updatedAt,
 			   a.account_name, u.name unit_name, p.name people_name
 		FROM invoices i
@@ -181,6 +185,7 @@ func (s *InvoiceStore) GetByID(ctx context.Context, id int64) (*Invoice, error) 
 		&i.PeopleID,
 		&i.UserID,
 		&i.Amount,
+		&i.AmountCents,
 		&i.Description,
 		&i.CancelReason,
 		&i.Status,
@@ -207,8 +212,8 @@ func (s *InvoiceStore) Create(ctx context.Context, tx *sql.Tx, i *Invoice) (*int
 		INSERT INTO invoices
 		(invoice_no, transaction_id, sales_date, due_date,
 		 ar_account_id, unit_id, people_id, user_id,
-		 amount, description, cancel_reason, status, building_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "1", ?)
+		 amount, amount_cents, description, cancel_reason, status, building_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "1", ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -226,6 +231,7 @@ func (s *InvoiceStore) Create(ctx context.Context, tx *sql.Tx, i *Invoice) (*int
 		i.PeopleID,
 		i.UserID,
 		i.Amount,
+		i.AmountCents,
 		i.Description,
 		i.CancelReason,
 		i.BuildingID,
@@ -248,7 +254,7 @@ func (s *InvoiceStore) Update(ctx context.Context, tx *sql.Tx, i *Invoice) (*int
 		UPDATE invoices
 		SET invoice_no = ?, transaction_id = ?, sales_date = ?, due_date = ?,
 		    ar_account_id = ?, unit_id = ?, people_id = ?, user_id = ?,
-		    amount = ?, description = ?, cancel_reason = ?,
+		    amount = ?, amount_cents = ?, description = ?, cancel_reason = ?,
 		    building_id = ?, updatedAt = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
@@ -268,6 +274,7 @@ func (s *InvoiceStore) Update(ctx context.Context, tx *sql.Tx, i *Invoice) (*int
 		i.PeopleID,
 		i.UserID,
 		i.Amount,
+		i.AmountCents,
 		i.Description,
 		i.CancelReason,
 		i.BuildingID,
