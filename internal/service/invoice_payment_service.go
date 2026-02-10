@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
@@ -79,8 +80,29 @@ func (s *InvoicePaymentService) GetAll(
 	endDate *string,
 	peopleID *int,
 	status *string,
-) ([]store.InvoicePayment, error) {
-	return s.invoicePaymentStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+) ([]dto.InvoicePaymentDto, error) {
+	payments, err := s.invoicePaymentStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+	if err != nil {
+		return nil, err
+	}
+	
+	var paymentsDto []dto.InvoicePaymentDto
+	for _, payment := range payments {
+		fmt.Println("payment", payment.AmountCents)
+		paymentsDto = append(paymentsDto, dto.InvoicePaymentDto{
+			ID: payment.ID,
+			TransactionID: payment.TransactionID,
+			Reference: payment.Reference,
+			Date: payment.Date,
+			InvoiceID: payment.InvoiceID,
+			UserID: payment.UserID,
+			AccountID: payment.AccountID,
+			Amount: money.FormatMoneyFromCents(payment.AmountCents),
+			Status: payment.Status,
+		})
+	}
+
+	return paymentsDto, nil
 }
 
 func (s *InvoicePaymentService) GetByID(
@@ -93,10 +115,21 @@ func (s *InvoicePaymentService) GetByID(
 		return nil, err
 	}
 
+
+	// initialize paymentDto with empty then check
+	var paymentDto dto.InvoicePaymentDto
+	if payment != nil {
+		paymentDto = dto.MapInvoicePaymentToDto(*payment)
+	}
+
 	splits, err := s.splitStore.GetAll(ctx, payment.TransactionID)
 	if err != nil {
 		return nil, err
 	}
+
+	// splits to dto
+	 splitsDto := dto.MapSplitsToDto(splits)
+	
 
 	transaction, err := s.transactionStore.GetByID(ctx, payment.TransactionID)
 	if err != nil {
@@ -108,11 +141,16 @@ func (s *InvoicePaymentService) GetByID(
 		return nil, err
 	}
 
+	var invoiceDto dto.InvoiceDto
+	if invoice != nil {
+		invoiceDto = dto.MapInvoiceToDto(*invoice)
+	}
+
 	return &dto.InvoicePaymentResponse{
-		Payment: *payment,
-		Splits: splits,
+		Payment: paymentDto,
+		Splits: splitsDto,
 		Transaction: *transaction,
-		Invoice: *invoice,
+		Invoice: invoiceDto,
 	}, nil
 	
 }
@@ -164,12 +202,20 @@ func (s *InvoicePaymentService) Create(ctx context.Context, paymentDTO dto.Creat
 			return err
 		}
 
+		amountStr := strconv.FormatFloat(paymentDTO.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %v", err)
+		}
+
 		// create splits
 		debitSplit := store.Split{
 			TransactionID: *transactionId,
 			AccountID:     assetAccount.ID,
 			Debit:         &paymentDTO.Amount,
 			Credit:        nil,
+			DebitCents:    &amountCents,
+			CreditCents:   nil,
 			UnitID:        invoice.UnitID,
 			PeopleID:      invoice.PeopleID,
 			Status:        "1",
@@ -184,6 +230,8 @@ func (s *InvoicePaymentService) Create(ctx context.Context, paymentDTO dto.Creat
 			AccountID:     arAccount.ID,
 			Credit:        &paymentDTO.Amount,
 			Debit:         nil,
+			DebitCents:    nil,
+			CreditCents:   &amountCents,
 			UnitID:        invoice.UnitID,
 			PeopleID:      invoice.PeopleID,
 			Status:        "1",
@@ -202,6 +250,7 @@ func (s *InvoicePaymentService) Create(ctx context.Context, paymentDTO dto.Creat
 			UserID:        1, // TODO: get user id from jwt
 			AccountID:     int64(paymentDTO.AccountID),
 			Amount:        paymentDTO.Amount,
+			AmountCents:   amountCents,
 			Status:        "1",
 		}
 
@@ -238,9 +287,20 @@ func (s *InvoicePaymentService) Update(
 			return fmt.Errorf("invoice payment not found: %v", err)
 		}
 
+		invoice, err := s.invoiceStore.GetByID(ctx, existing.InvoiceID)
+		if err != nil {
+			return fmt.Errorf("invoice not found: %v", err)
+		}
+
 		// validate account
 		if _, err := s.accountStore.GetByID(ctx, int64(req.AccountID)); err != nil {
 			return fmt.Errorf("account not found")
+		}
+
+		amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("invalid amount: %v", err)
 		}
 
 		// update invoice payment
@@ -253,6 +313,7 @@ func (s *InvoicePaymentService) Update(
 			UserID:       1, // TODO: get user id from jwt
 			AccountID:     int64(req.AccountID),
 			Amount:        req.Amount,
+			AmountCents:   amountCents,
 			Status:        strconv.Itoa(req.Status),
 		}
 
@@ -274,6 +335,45 @@ func (s *InvoicePaymentService) Update(
 		}
 
 		if _, err := s.transactionStore.Update(ctx, tx, transaction); err != nil {
+			return err
+		}
+
+		// delete existing splits
+		err = s.splitStore.DeleteByTransactionID(ctx, tx, existing.TransactionID)
+		if err != nil {
+			return err
+		}
+
+		// create splits
+		debitSplit := store.Split{
+			TransactionID: existing.TransactionID,
+			AccountID:     int64(req.AccountID),
+			Debit:         &req.Amount,
+			Credit:        nil,
+			DebitCents:    &amountCents,
+			CreditCents:   nil,
+			UnitID:        invoice.UnitID,
+			PeopleID:      invoice.PeopleID,
+			Status:        "1",
+		}
+		err = s.splitStore.Create(ctx, tx, &debitSplit)
+		if err != nil {
+			return err
+		}
+
+		creditSplit := store.Split{
+			TransactionID: existing.TransactionID,
+			AccountID:     int64(req.AccountID),
+			Credit:        &req.Amount,
+			Debit:         nil,
+			DebitCents:    nil,
+			CreditCents:   &amountCents,
+			UnitID:        invoice.UnitID,
+			PeopleID:      invoice.PeopleID,
+			Status:        "1",
+		}
+		err = s.splitStore.Create(ctx, tx, &creditSplit)
+		if err != nil {
 			return err
 		}
 

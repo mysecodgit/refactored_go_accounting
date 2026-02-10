@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	
 )
 
 // Split represents a breakdown of a transaction
@@ -26,6 +27,8 @@ type Split struct {
 	Unit    Unit    `json:"unit"`
 	People  People  `json:"people"`
 }
+
+
 
 type SplitStore struct {
 	db *sql.DB

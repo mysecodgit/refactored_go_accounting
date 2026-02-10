@@ -1,6 +1,6 @@
 -- 1️⃣ Add new column for integer amount
 ALTER TABLE invoices
-ADD COLUMN amount_cents BIGINT NULL;
+ADD COLUMN IF NOT EXISTS amount_cents BIGINT NULL;
 
 -- 2️⃣ Backfill data from old decimal
 UPDATE invoices

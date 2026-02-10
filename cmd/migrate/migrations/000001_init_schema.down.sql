@@ -1,0 +1,38 @@
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS `periods`;
+DROP TABLE IF EXISTS `readings`;
+DROP TABLE IF EXISTS `lease_files`;
+DROP TABLE IF EXISTS `leases`;
+DROP TABLE IF EXISTS `invoice_applied_discounts`;
+DROP TABLE IF EXISTS `invoice_applied_credits`;
+DROP TABLE IF EXISTS `credit_memo`;
+DROP TABLE IF EXISTS `journal_lines`;
+DROP TABLE IF EXISTS `journal`;
+DROP TABLE IF EXISTS `expense_lines`;
+DROP TABLE IF EXISTS `checks`;
+DROP TABLE IF EXISTS `bill_payments`;
+DROP TABLE IF EXISTS `bill_expense_lines`;
+DROP TABLE IF EXISTS `bills`;
+DROP TABLE IF EXISTS `receipt_items`;
+DROP TABLE IF EXISTS `sales_receipt`;
+DROP TABLE IF EXISTS `invoice_payments`;
+DROP TABLE IF EXISTS `invoice_items`;
+DROP TABLE IF EXISTS `invoices`;
+DROP TABLE IF EXISTS `splits`;
+DROP TABLE IF EXISTS `transactions`;
+DROP TABLE IF EXISTS `items`;
+DROP TABLE IF EXISTS `accounts`;
+DROP TABLE IF EXISTS `user_building_roles`;
+DROP TABLE IF EXISTS `users_building`;
+DROP TABLE IF EXISTS `people`;
+DROP TABLE IF EXISTS `units`;
+DROP TABLE IF EXISTS `role_permissions`;
+DROP TABLE IF EXISTS `roles`;
+DROP TABLE IF EXISTS `users`;
+DROP TABLE IF EXISTS `permissions`;
+DROP TABLE IF EXISTS `people_types`;
+DROP TABLE IF EXISTS `account_types`;
+DROP TABLE IF EXISTS `buildings`;
+
+SET FOREIGN_KEY_CHECKS = 1;

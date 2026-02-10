@@ -1,6 +1,7 @@
 package dto
 
 import (
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	store "github.com/mysecodgit/go_accounting/internal/store"
 )
 
@@ -154,7 +155,7 @@ type InvoiceListResponse struct {
 	BuildingID            int          `json:"building_id"`
 	CreatedAt             string       `json:"created_at"`
 	UpdatedAt             string       `json:"updated_at"`
-	PaidAmount            float64      `json:"paid_amount"`
+	PaidAmount            string       `json:"paid_amount"`
 	AppliedCreditsTotal   float64      `json:"applied_credits_total"`
 	AppliedDiscountsTotal float64      `json:"applied_discounts_total"`
 	People                store.People `json:"people"`
@@ -173,20 +174,20 @@ type InvoiceDto struct {
 	PeopleID *int64 `json:"people_id"`
 
 	UserID       int64   `json:"user_id"`
-	Amount       string `json:"amount"`
+	Amount       string  `json:"amount"`
 	Description  string  `json:"description"`
 	CancelReason *string `json:"cancel_reason"`
 
-	Status     *int `json:"status"` // enum('0','1')
-	BuildingID int64  `json:"building_id"`
+	Status     *int  `json:"status"` // enum('0','1')
+	BuildingID int64 `json:"building_id"`
 
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 
 	// relationships
 	ARAccount store.Account `json:"ar_account"`
-	Unit store.Unit `json:"unit"`
-	People store.People `json:"people"`
+	Unit      store.Unit    `json:"unit"`
+	People    store.People  `json:"people"`
 }
 
 type InvoiceItemDto struct {
@@ -202,5 +203,39 @@ type InvoiceItemDto struct {
 	Rate          string  `json:"rate"`
 
 	Total  string `json:"total"`
-	Status *int    `json:"status"` // enum('0','1')
+	Status *int   `json:"status"` // enum('0','1')
+}
+
+// map invoice to dto
+func MapInvoiceToDto(i store.Invoice) InvoiceDto {
+	return InvoiceDto{
+		ID:            i.ID,
+		InvoiceNo:     i.InvoiceNo,
+		TransactionID: i.TransactionID,
+		SalesDate:     i.SalesDate,
+		DueDate:       i.DueDate,
+		ARAccountID:   i.ARAccountID,
+		UnitID:        i.UnitID,
+		PeopleID:      i.PeopleID,
+		UserID:        i.UserID,
+		Amount:        money.FormatMoneyFromCents(i.AmountCents),
+		Description:   i.Description,
+		CancelReason:  i.CancelReason,
+		Status:        i.Status,
+		BuildingID:    i.BuildingID,
+		CreatedAt:     i.CreatedAt,
+		UpdatedAt:     i.UpdatedAt,
+		ARAccount:     i.ARAccount,
+		Unit:          i.Unit,
+		People:        i.People,
+	}
+}
+
+// map invoices to dto
+func MapInvoicesToDto(invoices []store.Invoice) []InvoiceDto {
+	var dto []InvoiceDto
+	for _, i := range invoices {
+		dto = append(dto, MapInvoiceToDto(i))
+	}
+	return dto
 }

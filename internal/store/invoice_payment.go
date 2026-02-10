@@ -21,7 +21,10 @@ type InvoicePayment struct {
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	AmountCents int64 `json:"amount_cents"`
 }
+
+
 
 type InvoicePaymentStore struct {
 	db *sql.DB
@@ -33,7 +36,8 @@ func NewInvoicePaymentStore(db *sql.DB) *InvoicePaymentStore {
 
 func (s *InvoicePaymentStore) GetAll(ctx context.Context, buildingID int64, startDate *string, endDate *string, peopleID *int, status *string) ([]InvoicePayment, error) {
 	query := `
-		SELECT ip.id, ip.transaction_id, ip.reference, ip.date, ip.invoice_id, ip.user_id, ip.account_id, ip.amount, ip.status, ip.createdAt, ip.updatedAt 
+		SELECT ip.id, ip.transaction_id, ip.reference, ip.date, ip.invoice_id, ip.user_id, ip.account_id, ip.amount, ip.status, ip.createdAt, ip.updatedAt
+		, ip.amount_cents
 		FROM invoice_payments ip
 		INNER JOIN invoices i ON ip.invoice_id = i.id
 		WHERE i.building_id = ?
@@ -86,6 +90,7 @@ func (s *InvoicePaymentStore) GetAll(ctx context.Context, buildingID int64, star
 			&p.Status,
 			&p.CreatedAt,
 			&p.UpdatedAt,
+			&p.AmountCents,
 		); err != nil {
 			return nil, err
 		}
@@ -99,7 +104,7 @@ func (s *InvoicePaymentStore) GetAllByInvoiceID(ctx context.Context, invoiceID i
 	query := `
 		SELECT id, transaction_id, reference, date,
 		       invoice_id, user_id, account_id,
-		       amount, status, createdAt, updatedAt
+		       amount, amount_cents, status, createdAt, updatedAt
 		FROM invoice_payments
 		WHERE invoice_id = ?
 	`
@@ -125,6 +130,7 @@ func (s *InvoicePaymentStore) GetAllByInvoiceID(ctx context.Context, invoiceID i
 			&p.UserID,
 			&p.AccountID,
 			&p.Amount,
+			&p.AmountCents,
 			&p.Status,
 			&p.CreatedAt,
 			&p.UpdatedAt,
@@ -141,7 +147,7 @@ func (s *InvoicePaymentStore) GetByID(ctx context.Context, id int64) (*InvoicePa
 	query := `
 		SELECT id, transaction_id, reference, date,
 		       invoice_id, user_id, account_id,
-		       amount, status, createdAt, updatedAt
+		       amount, amount_cents, status, createdAt, updatedAt
 		FROM invoice_payments
 		WHERE id = ?
 	`
@@ -159,6 +165,7 @@ func (s *InvoicePaymentStore) GetByID(ctx context.Context, id int64) (*InvoicePa
 		&p.UserID,
 		&p.AccountID,
 		&p.Amount,
+		&p.AmountCents,
 		&p.Status,
 		&p.CreatedAt,
 		&p.UpdatedAt,
@@ -178,7 +185,7 @@ func (s *InvoicePaymentStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int6
 	query := `
 		SELECT id, transaction_id, reference, date,
 		       invoice_id, user_id, account_id,
-		       amount, status, createdAt, updatedAt
+		       amount, amount_cents, status, createdAt, updatedAt
 		FROM invoice_payments
 		WHERE id = ?
 	`
@@ -196,6 +203,7 @@ func (s *InvoicePaymentStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int6
 		&p.UserID,
 		&p.AccountID,
 		&p.Amount,
+		&p.AmountCents,
 		&p.Status,
 		&p.CreatedAt,
 		&p.UpdatedAt,
@@ -216,8 +224,8 @@ func (s *InvoicePaymentStore) Create(ctx context.Context, tx *sql.Tx, p *Invoice
 		INSERT INTO invoice_payments
 		(transaction_id, reference, date,
 		 invoice_id, user_id, account_id,
-		 amount, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, "1")
+		 amount, amount_cents, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?,?, "1")
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -233,6 +241,7 @@ func (s *InvoicePaymentStore) Create(ctx context.Context, tx *sql.Tx, p *Invoice
 		p.UserID,
 		p.AccountID,
 		p.Amount,
+		p.AmountCents,
 	)
 	if err != nil {
 		return nil, err
@@ -251,7 +260,7 @@ func (s *InvoicePaymentStore) Update(ctx context.Context, tx *sql.Tx, p *Invoice
 		UPDATE invoice_payments
 		SET transaction_id = ?, reference = ?, date = ?,
 		    invoice_id = ?, user_id = ?, account_id = ?,
-		    amount = ?, status = ?, updatedAt = CURRENT_TIMESTAMP
+		    amount = ?, amount_cents = ?, status = ?, updatedAt = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
 
@@ -268,6 +277,7 @@ func (s *InvoicePaymentStore) Update(ctx context.Context, tx *sql.Tx, p *Invoice
 		p.UserID,
 		p.AccountID,
 		p.Amount,
+		p.AmountCents,
 		p.Status,
 		p.ID,
 	)

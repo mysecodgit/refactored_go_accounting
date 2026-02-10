@@ -129,7 +129,7 @@ func (s *InvoiceService) GetAll(ctx context.Context, buildingID int64, startDate
 			BuildingID:            invoice.BuildingID,
 			CreatedAt:             invoice.CreatedAt,
 			UpdatedAt:             invoice.UpdatedAt,
-			PaidAmount:            invoice.PaidAmount,
+			PaidAmount:            money.FormatMoneyFromCents(invoice.PaidAmountCents),
 			AppliedCreditsTotal:   invoice.AppliedCreditsTotal,
 			AppliedDiscountsTotal: invoice.AppliedDiscountsTotal,
 			People:                invoice.People,

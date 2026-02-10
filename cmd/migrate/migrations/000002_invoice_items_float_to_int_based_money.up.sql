@@ -1,10 +1,10 @@
 -- Add new scaled integer columns
-ALTER TABLE invoice_items
-ADD COLUMN qty_scaled BIGINT NULL,
-ADD COLUMN rate_scaled BIGINT NULL,
-ADD COLUMN total_cents BIGINT NULL,
-ADD COLUMN previous_value_cents BIGINT NULL,
-ADD COLUMN current_value_cents BIGINT NULL;
+ALTER TABLE invoice_items 
+ADD COLUMN IF NOT EXISTS qty_scaled BIGINT NULL,
+ADD COLUMN IF NOT EXISTS rate_scaled BIGINT NULL,
+ADD COLUMN IF NOT EXISTS total_cents BIGINT NULL,
+ADD COLUMN IF NOT EXISTS previous_value_cents BIGINT NULL,
+ADD COLUMN IF NOT EXISTS current_value_cents BIGINT NULL;
 
 -- Backfill existing data
 UPDATE invoice_items
