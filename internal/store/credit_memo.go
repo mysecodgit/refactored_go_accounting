@@ -19,6 +19,7 @@ type CreditMemo struct {
 	BuildingID       int64     `json:"building_id"`
 	UnitID           int64     `json:"unit_id"`
 	Amount           float64 `json:"amount"`
+	AmountCents      int64   `json:"amount_cents"`
 	Description      string  `json:"description"`
 	Status           int     `json:"status"` // enum('0','1')
 	CreatedAt        string  `json:"created_at"`
@@ -37,7 +38,7 @@ func NewCreditMemoStore(db *sql.DB) *CreditMemoStore {
 	return &CreditMemoStore{db: db}
 }
 
-type CreditMemoListResponse struct {
+type CreditMemoSummary struct {
 	ID               int     `json:"id"`
 	TransactionID    int     `json:"transaction_id"`
 	Reference        string  `json:"reference"`
@@ -49,6 +50,7 @@ type CreditMemoListResponse struct {
 	BuildingID       int     `json:"building_id"`
 	UnitID           int     `json:"unit_id"`
 	Amount           float64 `json:"amount"`
+	AmountCents      int64   `json:"amount_cents"`
 	Description      string  `json:"description"`
 	Status           int     `json:"status"`
 	CreatedAt        string  `json:"created_at"`
@@ -65,14 +67,14 @@ func (s *CreditMemoStore) GetAll(
 	startDate, endDate *string,
 	peopleID *int,
 	status *string,
-) ([]CreditMemoListResponse, error) {
+) ([]CreditMemoSummary, error) {
 
 	query := `
 		SELECT 
 			cm.id, cm.transaction_id, cm.reference, cm.date,
 			cm.user_id, cm.deposit_to, cm.liability_account,
 			cm.people_id, cm.building_id, cm.unit_id,
-			cm.amount, cm.description, cm.status,
+			cm.amount, cm.amount_cents, cm.description, cm.status,
 			cm.created_at, cm.updated_at,
 			p.id, p.name,
 			u.id, u.name,
@@ -119,9 +121,9 @@ func (s *CreditMemoStore) GetAll(
 	}
 	defer rows.Close()
 
-	var creditMemos []CreditMemoListResponse
+	var creditMemos []CreditMemoSummary
 	for rows.Next() {
-		var cm CreditMemoListResponse
+		var cm CreditMemoSummary
 		if err := rows.Scan(
 			&cm.ID,
 			&cm.TransactionID,
@@ -134,6 +136,7 @@ func (s *CreditMemoStore) GetAll(
 			&cm.BuildingID,
 			&cm.UnitID,
 			&cm.Amount,
+			&cm.AmountCents,
 			&cm.Description,
 			&cm.Status,
 			&cm.CreatedAt,
@@ -161,7 +164,7 @@ func (s *CreditMemoStore) GetByID(ctx context.Context, id int64) (*CreditMemo, e
 			cm.id, cm.transaction_id, cm.reference, cm.date,
 			cm.user_id, cm.deposit_to, cm.liability_account,
 			cm.people_id, cm.building_id, cm.unit_id,
-			cm.amount, cm.description, cm.status,
+			cm.amount,cm.amount_cents, cm.description, cm.status,
 			cm.created_at, cm.updated_at,
 			p.name, u.name
 		FROM credit_memo cm
@@ -186,6 +189,7 @@ func (s *CreditMemoStore) GetByID(ctx context.Context, id int64) (*CreditMemo, e
 		&cm.BuildingID,
 		&cm.UnitID,
 		&cm.Amount,
+		&cm.AmountCents,
 		&cm.Description,
 		&cm.Status,
 		&cm.CreatedAt,
@@ -235,8 +239,8 @@ func (s *CreditMemoStore) Create(ctx context.Context, tx *sql.Tx, cm *CreditMemo
 		INSERT INTO credit_memo
 		(transaction_id, reference, date, user_id,
 		 deposit_to, liability_account, people_id,
-		 building_id, unit_id, amount, description, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '1')
+		 building_id, unit_id, amount,amount_cents, description, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, '1')
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -255,6 +259,7 @@ func (s *CreditMemoStore) Create(ctx context.Context, tx *sql.Tx, cm *CreditMemo
 		cm.BuildingID,
 		cm.UnitID,
 		cm.Amount,
+		cm.AmountCents,
 		cm.Description,
 	)
 	if err != nil {
@@ -275,7 +280,7 @@ func (s *CreditMemoStore) Update(ctx context.Context, tx *sql.Tx, cm *CreditMemo
 		UPDATE credit_memo
 		SET transaction_id = ?, reference = ?, date = ?, user_id = ?,
 		    deposit_to = ?, liability_account = ?, people_id = ?,
-		    building_id = ?, unit_id = ?, amount = ?, description = ?,
+		    building_id = ?, unit_id = ?, amount = ?,amount_cents = ?, description = ?,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
@@ -296,6 +301,7 @@ func (s *CreditMemoStore) Update(ctx context.Context, tx *sql.Tx, cm *CreditMemo
 		cm.BuildingID,
 		cm.UnitID,
 		cm.Amount,
+		cm.AmountCents,
 		cm.Description,
 		cm.ID,
 	)

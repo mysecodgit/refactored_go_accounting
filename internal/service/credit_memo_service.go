@@ -7,7 +7,9 @@ import (
 	_ "fmt"
 	"math"
 	_ "math"
+	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	_ "github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
@@ -20,7 +22,7 @@ import (
 */
 
 type CreditMemoStore interface {
-	GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]store.CreditMemoListResponse, error)
+	GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]store.CreditMemoSummary, error)
 	GetByPeopleID(ctx context.Context, peopleID int64) ([]store.CreditMemo, error)
 	GetByID(ctx context.Context, id int64) (*store.CreditMemo, error)
 	Create(ctx context.Context, tx *sql.Tx, cm *store.CreditMemo) (*int64, error)
@@ -69,20 +71,22 @@ func (s *CreditMemoService) GetAll(
 	startDate, endDate *string,
 	peopleID *int,
 	status *string,
-) ([]store.CreditMemoListResponse, error) {
-	return s.creditMemoStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+) ([]dto.CreditMemoSummaryDto, error) {
+	creditMemos, err := s.creditMemoStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+	if err != nil {
+		return nil, err
+	}
+	return dto.MapCreditMemoSummariesToDto(creditMemos), nil
 }
 
-type CreditMemoResponse struct {
-	CreditMemo  *store.CreditMemo              `json:"credit_memo"`
-	Splits      []store.Split          `json:"splits"`
-	Transaction *store.Transaction `json:"transaction"`
-}
-
-func (s *CreditMemoService) GetByID(ctx context.Context, id int64) (*CreditMemoResponse, error) {
+func (s *CreditMemoService) GetByID(ctx context.Context, id int64) (*dto.CreditMemoDetailsResponse, error) {
 	creditMemo, err := s.creditMemoStore.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("credit memo not found: %v", err)
+	}
+	var creditMemoDto *dto.CreditMemoDto
+	if creditMemo != nil {
+		creditMemoDto = dto.MapCreditMemoToDto(*creditMemo)
 	}
 
 	transaction, err := s.transactionStore.GetByID(ctx, creditMemo.TransactionID)
@@ -95,14 +99,14 @@ func (s *CreditMemoService) GetByID(ctx context.Context, id int64) (*CreditMemoR
 		return nil, fmt.Errorf("failed to fetch splits: %v", err)
 	}
 
-	return &CreditMemoResponse{
-		CreditMemo:  creditMemo,
-		Splits:      allSplits, // Include both active and inactive splits for view
+	splitsDto := dto.MapSplitsToDto(allSplits)
+
+	return &dto.CreditMemoDetailsResponse{
+		CreditMemo:  creditMemoDto,
+		Splits:      splitsDto, // Include both active and inactive splits for view
 		Transaction: transaction,
 	}, nil
 }
-
-
 
 func (s *CreditMemoService) PreviewCreditMemoSplits(
 	ctx context.Context,
@@ -120,7 +124,6 @@ func (s *CreditMemoService) PreviewCreditMemoSplits(
 
 	return splits, nil
 }
-
 
 func (s *CreditMemoService) Create(
 	ctx context.Context,
@@ -163,6 +166,10 @@ func (s *CreditMemoService) Create(
 			}
 		}
 
+		amountCents, err := money.ParseUSDAmount(strconv.FormatFloat(req.Amount, 'f', -1, 64))
+		if err != nil {
+			return fmt.Errorf("error parsing amount: %v", err)
+		}
 		// create credit memo
 		cm := &store.CreditMemo{
 			TransactionID:    *transactionID,
@@ -175,6 +182,7 @@ func (s *CreditMemoService) Create(
 			BuildingID:       req.BuildingID,
 			UnitID:           req.UnitID,
 			Amount:           req.Amount,
+			AmountCents:      amountCents,
 			Description:      req.Description,
 			Status:           1,
 		}
@@ -242,7 +250,12 @@ func (s *CreditMemoService) Update(
 				return fmt.Errorf("error creating split: %v", err)
 			}
 		}
-
+		amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+		fmt.Println("amountStr", amountStr)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("error parsing amount: %v", err)
+		}
 		// 7️⃣ Update credit memo record
 		updatedCM := &store.CreditMemo{
 			ID:               existingCM.ID,
@@ -256,6 +269,7 @@ func (s *CreditMemoService) Update(
 			BuildingID:       req.BuildingID,
 			UnitID:           req.UnitID,
 			Amount:           req.Amount,
+			AmountCents:      amountCents,
 			Description:      req.Description,
 		}
 
@@ -267,8 +281,6 @@ func (s *CreditMemoService) Update(
 		return nil
 	})
 }
-
-
 
 func (s *CreditMemoService) GenerateCreditMemoSplits(
 	ctx context.Context,
@@ -289,52 +301,67 @@ func (s *CreditMemoService) GenerateCreditMemoSplits(
 		return nil, fmt.Errorf("amount must be greater than zero")
 	}
 
+	amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	amountCents, err := money.ParseUSDAmount(amountStr)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing amount: %v", err)
+	}
+
 	// Credit Memo logic:
 	// Debit: Liability account (reduces liability)
 	// Credit: Deposit/Asset account
 
 	debitSplit := store.Split{
-		AccountID: int64(req.LiabilityAccount),
-		Debit:     &amount,
-		Credit:    nil,
-		UnitID:    &req.UnitID,
-		PeopleID:  &req.PeopleID,
-		Status:    "1",
+		AccountID:   int64(req.LiabilityAccount),
+		Debit:       &amount,
+		DebitCents:  &amountCents,
+		Credit:      nil,
+		CreditCents: nil,
+		UnitID:      &req.UnitID,
+		PeopleID:    &req.PeopleID,
+		Status:      "1",
 	}
 
 	creditSplit := store.Split{
-		AccountID: int64(req.DepositTo),
-		Credit:    &amount,
-		Debit:     nil,
-		UnitID:    &req.UnitID,
-		PeopleID:  &req.PeopleID,
-		Status:    "1",
+		AccountID:   int64(req.DepositTo),
+		Credit:      &amount,
+		CreditCents: &amountCents,
+		Debit:       nil,
+		DebitCents:  nil,
+		UnitID:      &req.UnitID,
+		PeopleID:    &req.PeopleID,
+		Status:      "1",
 	}
 
 	return []store.Split{debitSplit, creditSplit}, nil
 }
 
-
-
 func (s *CreditMemoService) validateBalanced(splits []store.Split) error {
 	var debit, credit float64
+	var debitCents, creditCents int64
 
 	for _, s := range splits {
 		if s.Debit != nil {
 			debit += *s.Debit
+			debitCents += *s.DebitCents
 		}
 		if s.Credit != nil {
 			credit += *s.Credit
+			creditCents += *s.CreditCents
 		}
 	}
 
+	// TODO: Remove this once we have a better way to handle floating point precision
 	if math.Abs(debit-credit) > 0.0001 {
+		return fmt.Errorf("unbalanced entry: debit %.2f ≠ credit %.2f", debit, credit)
+	}
+
+	if debitCents != creditCents {
 		return fmt.Errorf("unbalanced entry: debit %.2f ≠ credit %.2f", debit, credit)
 	}
 
 	return nil
 }
-
 
 func (s *CreditMemoService) GetByPeopleID(ctx context.Context, peopleID int64) ([]store.CreditMemo, error) {
 	return s.creditMemoStore.GetByPeopleID(ctx, peopleID)
