@@ -12,8 +12,9 @@ type InvoiceAppliedCredit struct {
 	CreditMemoID int64 `json:"credit_memo_id"`
 
 	Amount      float64 `json:"amount"`
+	AmountCents int64   `json:"amount_cents"`
 	Description string  `json:"description"`
-	Date         string `json:"date"`
+	Date        string  `json:"date"`
 
 	Status string `json:"status"` // enum('0','1')
 
@@ -32,7 +33,7 @@ func NewInvoiceAppliedCreditStore(db *sql.DB) *InvoiceAppliedCreditStore {
 func (s *InvoiceAppliedCreditStore) GetAllByInvoiceID(ctx context.Context, invoiceID int64) ([]InvoiceAppliedCredit, error) {
 	query := `
 		SELECT id, invoice_id, credit_memo_id,
-		       amount, description, date, status,
+		       amount, amount_cents, description, date, status,
 		       created_at, updated_at
 		FROM invoice_applied_credits
 		WHERE invoice_id = ? AND status = '1'
@@ -55,6 +56,7 @@ func (s *InvoiceAppliedCreditStore) GetAllByInvoiceID(ctx context.Context, invoi
 			&c.InvoiceID,
 			&c.CreditMemoID,
 			&c.Amount,
+			&c.AmountCents,
 			&c.Description,
 			&c.Date,
 			&c.Status,
@@ -72,7 +74,7 @@ func (s *InvoiceAppliedCreditStore) GetAllByInvoiceID(ctx context.Context, invoi
 func (s *InvoiceAppliedCreditStore) GetAllByCreditMemoID(ctx context.Context, creditMemoID int64) ([]InvoiceAppliedCredit, error) {
 	query := `
 		SELECT id, invoice_id, credit_memo_id,
-		       amount, description, date, status,
+		       amount, amount_cents, description, date, status,
 		       created_at, updated_at
 		FROM invoice_applied_credits
 		WHERE credit_memo_id = ? AND status = '1'
@@ -95,6 +97,7 @@ func (s *InvoiceAppliedCreditStore) GetAllByCreditMemoID(ctx context.Context, cr
 			&c.InvoiceID,
 			&c.CreditMemoID,
 			&c.Amount,
+			&c.AmountCents,
 			&c.Description,
 			&c.Date,
 			&c.Status,
@@ -112,7 +115,7 @@ func (s *InvoiceAppliedCreditStore) GetAllByCreditMemoID(ctx context.Context, cr
 func (s *InvoiceAppliedCreditStore) GetByID(ctx context.Context, id int64) (*InvoiceAppliedCredit, error) {
 	query := `
 		SELECT id, invoice_id, credit_memo_id,
-		       amount, description, date, status,
+		       amount, amount_cents, description, date, status,
 		       created_at, updated_at
 		FROM invoice_applied_credits
 		WHERE id = ?
@@ -127,6 +130,7 @@ func (s *InvoiceAppliedCreditStore) GetByID(ctx context.Context, id int64) (*Inv
 		&c.InvoiceID,
 		&c.CreditMemoID,
 		&c.Amount,
+		&c.AmountCents,
 		&c.Description,
 		&c.Date,
 		&c.Status,
@@ -147,8 +151,8 @@ func (s *InvoiceAppliedCreditStore) GetByID(ctx context.Context, id int64) (*Inv
 func (s *InvoiceAppliedCreditStore) Create(ctx context.Context, c *InvoiceAppliedCredit) error {
 	query := `
 		INSERT INTO invoice_applied_credits
-		(invoice_id, credit_memo_id, amount, description, date, status)
-		VALUES (?, ?, ?, ?, ?, ?)
+		(invoice_id, credit_memo_id, amount, amount_cents, description, date, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -160,6 +164,7 @@ func (s *InvoiceAppliedCreditStore) Create(ctx context.Context, c *InvoiceApplie
 		c.InvoiceID,
 		c.CreditMemoID,
 		c.Amount,
+		c.AmountCents,
 		c.Description,
 		c.Date,
 		c.Status,
@@ -180,7 +185,7 @@ func (s *InvoiceAppliedCreditStore) Create(ctx context.Context, c *InvoiceApplie
 func (s *InvoiceAppliedCreditStore) Update(ctx context.Context, c *InvoiceAppliedCredit) error {
 	query := `
 		UPDATE invoice_applied_credits
-		SET invoice_id = ?, credit_memo_id = ?, amount = ?,
+		SET invoice_id = ?, credit_memo_id = ?, amount = ?, amount_cents = ?,
 		    description = ?, date = ?, status = ?,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
@@ -195,6 +200,7 @@ func (s *InvoiceAppliedCreditStore) Update(ctx context.Context, c *InvoiceApplie
 		c.InvoiceID,
 		c.CreditMemoID,
 		c.Amount,
+		c.AmountCents,
 		c.Description,
 		c.Date,
 		c.Status,
@@ -217,7 +223,7 @@ func (s *InvoiceAppliedCreditStore) Update(ctx context.Context, c *InvoiceApplie
 }
 
 func (s *InvoiceAppliedCreditStore) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM invoice_applied_credits WHERE id = ?`
+	query := `UPDATE invoice_applied_credits SET status = '0' WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -240,7 +246,7 @@ func (s *InvoiceAppliedCreditStore) Delete(ctx context.Context, id int64) error 
 }
 
 func (s *InvoiceAppliedCreditStore) DeleteByInvoiceID(ctx context.Context, invoiceID int64) error {
-	query := `DELETE FROM invoice_applied_credits WHERE invoice_id = ?`
+	query := `UPDATE invoice_applied_credits SET status = '0' WHERE invoice_id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()

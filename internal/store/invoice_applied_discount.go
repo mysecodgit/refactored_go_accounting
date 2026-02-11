@@ -16,6 +16,7 @@ type InvoiceAppliedDiscount struct {
 	IncomeAccountID int64 `json:"income_account"`
 
 	Amount      float64   `json:"amount"`
+	AmountCents int64     `json:"amount_cents"`
 	Description string    `json:"description"`
 	Date         string `json:"date"`
 
@@ -37,7 +38,7 @@ func (s *InvoiceAppliedDiscountStore) GetAllByInvoiceID(ctx context.Context, inv
 	query := `
 		SELECT id, reference, invoice_id, transaction_id,
 		       ar_account, income_account,
-		       amount, description, date, status,
+		       amount, amount_cents, description, date, status,
 		       created_at, updated_at
 		FROM invoice_applied_discounts
 		WHERE invoice_id = ?
@@ -63,6 +64,7 @@ func (s *InvoiceAppliedDiscountStore) GetAllByInvoiceID(ctx context.Context, inv
 			&d.ARAccountID,
 			&d.IncomeAccountID,
 			&d.Amount,
+			&d.AmountCents,
 			&d.Description,
 			&d.Date,
 			&d.Status,
@@ -81,7 +83,7 @@ func (s *InvoiceAppliedDiscountStore) GetByID(ctx context.Context, id int64) (*I
 	query := `
 		SELECT id, reference, invoice_id, transaction_id,
 		       ar_account, income_account,
-		       amount, description, date, status,
+		       amount, amount_cents, description, date, status,
 		       created_at, updated_at
 		FROM invoice_applied_discounts
 		WHERE id = ?
@@ -99,6 +101,7 @@ func (s *InvoiceAppliedDiscountStore) GetByID(ctx context.Context, id int64) (*I
 		&d.ARAccountID,
 		&d.IncomeAccountID,
 		&d.Amount,
+		&d.AmountCents,
 		&d.Description,
 		&d.Date,
 		&d.Status,
@@ -121,8 +124,8 @@ func (s *InvoiceAppliedDiscountStore) Create(ctx context.Context, tx *sql.Tx, d 
 		INSERT INTO invoice_applied_discounts
 		(reference, invoice_id, transaction_id,
 		 ar_account, income_account,
-		 amount, description, date, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 amount, amount_cents, description, date, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -137,6 +140,7 @@ func (s *InvoiceAppliedDiscountStore) Create(ctx context.Context, tx *sql.Tx, d 
 		d.ARAccountID,
 		d.IncomeAccountID,
 		d.Amount,
+		d.AmountCents,
 		d.Description,
 		d.Date,
 		d.Status,
@@ -159,7 +163,7 @@ func (s *InvoiceAppliedDiscountStore) Update(ctx context.Context, d *InvoiceAppl
 		UPDATE invoice_applied_discounts
 		SET reference = ?, invoice_id = ?, transaction_id = ?,
 		    ar_account = ?, income_account = ?,
-		    amount = ?, description = ?, date = ?, status = ?,
+		    amount = ?, amount_cents = ?, description = ?, date = ?, status = ?,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
@@ -176,6 +180,7 @@ func (s *InvoiceAppliedDiscountStore) Update(ctx context.Context, d *InvoiceAppl
 		d.ARAccountID,
 		d.IncomeAccountID,
 		d.Amount,
+		d.AmountCents,
 		d.Description,
 		d.Date,
 		d.Status,
@@ -198,7 +203,7 @@ func (s *InvoiceAppliedDiscountStore) Update(ctx context.Context, d *InvoiceAppl
 }
 
 func (s *InvoiceAppliedDiscountStore) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM invoice_applied_discounts WHERE id = ?`
+	query := `Update invoice_applied_discounts SET status = '0' WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -221,7 +226,7 @@ func (s *InvoiceAppliedDiscountStore) Delete(ctx context.Context, id int64) erro
 }
 
 func (s *InvoiceAppliedDiscountStore) DeleteByInvoiceID(ctx context.Context, invoiceID int64) error {
-	query := `DELETE FROM invoice_applied_discounts WHERE invoice_id = ?`
+	query := `Update invoice_applied_discounts SET status = '0' WHERE invoice_id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()

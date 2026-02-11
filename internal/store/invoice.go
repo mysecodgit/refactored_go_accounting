@@ -65,7 +65,9 @@ type InvoiceSummary struct {
 	PaidAmount          float64 `json:"paid_amount"`
 	PaidAmountCents     int64   `json:"paid_amount_cents"`
 	AppliedCreditsTotal float64 `json:"applied_credits_total"`
+	AppliedCreditsTotalCents int64 `json:"applied_credits_total_cents"`
 	AppliedDiscountsTotal float64 `json:"applied_discounts_total"`
+	AppliedDiscountsTotalCents int64 `json:"applied_discounts_total_cents"`
 	People              People  `json:"people"`
 	Unit                Unit    `json:"unit"`
 }
@@ -93,10 +95,20 @@ func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 				WHERE iac.invoice_id = i.id AND iac.status = '1'
 			), 0) as applied_credits_total,
 			COALESCE((
+				SELECT SUM(iac.amount_cents) 
+				FROM invoice_applied_credits iac 
+				WHERE iac.invoice_id = i.id AND iac.status = '1'
+			), 0) as applied_credits_total_cents,
+			COALESCE((
 				SELECT SUM(iad.amount) 
 				FROM invoice_applied_discounts iad 
 				WHERE iad.invoice_id = i.id AND iad.status = '1'
 			), 0) as applied_discounts_total,
+			COALESCE((
+				SELECT SUM(iad.amount_cents) 
+				FROM invoice_applied_discounts iad 
+				WHERE iad.invoice_id = i.id AND iad.status = '1'
+			), 0) as applied_discounts_total_cents,
 			p.name as people_name,
 			p.id as people_id,
 			u.id as unit_id,
@@ -150,7 +162,8 @@ func (s *InvoiceStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 			&invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID,
 			&invoice.CreatedAt, &invoice.UpdatedAt,
 			&invoice.PaidAmount,&invoice.PaidAmountCents, &invoice.AppliedCreditsTotal,
-			&invoice.AppliedDiscountsTotal,
+			&invoice.AppliedCreditsTotalCents, &invoice.AppliedDiscountsTotal,
+			&invoice.AppliedDiscountsTotalCents,
 			&invoice.People.Name, &invoice.People.ID,
 			&invoice.Unit.ID, &invoice.Unit.Name,
 		); err != nil {

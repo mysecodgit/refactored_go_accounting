@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"strconv"
 
 	money "github.com/mysecodgit/go_accounting/internal/accounting"
@@ -112,6 +111,7 @@ func (s *InvoiceService) GetAll(ctx context.Context, buildingID int64, startDate
 	}
 	var invoiceListResponses []dto.InvoiceListResponse
 	for _, invoice := range invoices {
+		balance := invoice.AmountCents - invoice.PaidAmountCents - invoice.AppliedCreditsTotalCents - invoice.AppliedDiscountsTotalCents
 		invoiceListResponses = append(invoiceListResponses, dto.InvoiceListResponse{
 			ID:                    invoice.ID,
 			InvoiceNo:             invoice.InvoiceNo,
@@ -130,8 +130,9 @@ func (s *InvoiceService) GetAll(ctx context.Context, buildingID int64, startDate
 			CreatedAt:             invoice.CreatedAt,
 			UpdatedAt:             invoice.UpdatedAt,
 			PaidAmount:            money.FormatMoneyFromCents(invoice.PaidAmountCents),
-			AppliedCreditsTotal:   invoice.AppliedCreditsTotal,
-			AppliedDiscountsTotal: invoice.AppliedDiscountsTotal,
+			AppliedCreditsTotal:   money.FormatMoneyFromCents(invoice.AppliedCreditsTotalCents),
+			AppliedDiscountsTotal: money.FormatMoneyFromCents(invoice.AppliedDiscountsTotalCents),
+			Balance:               money.FormatMoneyFromCents(balance),
 			People:                invoice.People,
 			Unit:                  invoice.Unit,
 		})
@@ -681,9 +682,9 @@ func validateBalanced(splits []store.Split) error {
 		}
 	}
 
-	if math.Abs(debit-credit) > 0.0001 {
-		return fmt.Errorf("unbalanced entry: debit %.2f ≠ credit %.2f", debit, credit)
-	}
+	// if math.Abs(debit-credit) > 0.0001 {
+	// 	return fmt.Errorf("unbalanced entry: debit %.2f ≠ credit %.2f", debit, credit)
+	// }
 
 	if debitCents != creditCents {
 		return fmt.Errorf("unbalanced entry: debit cents %d ≠ credit cents %d", debitCents, creditCents)
@@ -797,8 +798,12 @@ func (s *InvoiceService) CreateInvoicePayment(ctx context.Context, paymentDTO dt
 	return &response, nil
 }
 
-func (s *InvoiceService) GetInvoiceDiscounts(ctx context.Context, id int64) ([]store.InvoiceAppliedDiscount, error) {
-	return s.invoiceAppliedDiscountStore.GetAllByInvoiceID(ctx, id)
+func (s *InvoiceService) GetInvoiceDiscounts(ctx context.Context, id int64) ([]*dto.InvoiceAppliedDiscountDto, error) {
+	invoiceAppliedDiscounts, err := s.invoiceAppliedDiscountStore.GetAllByInvoiceID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied discounts: %v", err)
+	}
+	return dto.MapInvoiceAppliedDiscountsToDto(invoiceAppliedDiscounts), nil
 }
 
 func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID int64, discountDTO dto.CreateInvoiceAppliedDiscountRequest) (*dto.InvoiceAppliedDiscountResponse, error) {
@@ -854,12 +859,20 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 			return err
 		}
 
+		discountAmountStr := strconv.FormatFloat(discountDTO.Amount, 'f', -1, 64)
+		discountAmountCents, err := money.ParseUSDAmount(discountAmountStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse discount amount: %v", err)
+		}
+
 		// create splits
 		debitSplit := store.Split{
 			TransactionID: *transactionId,
 			AccountID:     int64(discountDTO.ARAccount),
 			Credit:        &discountDTO.Amount,
 			Debit:         nil,
+			CreditCents:   &discountAmountCents,
+			DebitCents:    nil,
 			UnitID:        invoice.UnitID,
 			PeopleID:      invoice.PeopleID,
 			Status:        "1",
@@ -875,6 +888,8 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 			AccountID:     int64(discountDTO.IncomeAccount),
 			Debit:         &discountDTO.Amount,
 			Credit:        nil,
+			DebitCents:    &discountAmountCents,
+			CreditCents:   nil,
 			UnitID:        invoice.UnitID,
 			PeopleID:      invoice.PeopleID,
 			Status:        "1",
@@ -891,6 +906,7 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 			TransactionID:   *transactionId,
 			InvoiceID:       invoiceID,
 			Amount:          discountDTO.Amount,
+			AmountCents:     discountAmountCents,
 			Description:     discountDTO.Description,
 			Date:            discountDTO.Date,
 			Status:          "1",
@@ -918,8 +934,12 @@ func (s *InvoiceService) CreateInvoiceDiscount(ctx context.Context, invoiceID in
 
 }
 
-func (s *InvoiceService) GetAppliedCredits(ctx context.Context, invoiceID int64) ([]store.InvoiceAppliedCredit, error) {
-	return s.invoiceAppliedCreditStore.GetAllByInvoiceID(ctx, invoiceID)
+func (s *InvoiceService) GetAppliedCredits(ctx context.Context, invoiceID int64) ([]*dto.InvoiceAppliedCreditDto, error) {
+	invoiceAppliedCredits, err := s.invoiceAppliedCreditStore.GetAllByInvoiceID(ctx, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied credits: %v", err)
+	}
+	return dto.MapInvoiceAppliedCreditsToDto(invoiceAppliedCredits), nil
 }
 
 // GET INVOICE AVAILABLE CREDITS
@@ -942,7 +962,7 @@ func (s *InvoiceService) GetInvoiceAvailableCredits(ctx context.Context, invoice
 	// get available credits
 	credits, err := s.creditMemoStore.GetByPeopleID(ctx, *invoice.PeopleID)
 	if err != nil {
-		return nil, fmt.Errorf("available credits not found: %v", err)
+		return nil, fmt.Errorf("credits not found: %v", err)
 	}
 
 	peopleID := *invoice.PeopleID
@@ -957,23 +977,21 @@ func (s *InvoiceService) GetInvoiceAvailableCredits(ctx context.Context, invoice
 			}
 
 			// sum applied credits amount
-			appliedAmount := 0.0
+			appliedAmount := int64(0)
 			for _, appliedCredit := range appliedCredits {
-				appliedAmount += appliedCredit.Amount
+				appliedAmount += appliedCredit.AmountCents
 			}
 
 			// Calculate available amount and round to 2 decimal places to avoid floating-point precision issues
-			availableAmount := credit.Amount - appliedAmount
-			// Round to 2 decimal places
-			availableAmount = float64(int(availableAmount*100+0.5)) / 100
+			availableAmount := credit.AmountCents - appliedAmount
 
 			if availableAmount > 0 {
 				availableCredits = append(availableCredits, dto.AvailableCreditMemo{
 					ID:              int(credit.ID),
 					Date:            credit.Date,
-					Amount:          credit.Amount,
-					AppliedAmount:   appliedAmount,
-					AvailableAmount: availableAmount,
+					Amount:          money.FormatMoneyFromCents(credit.AmountCents),
+					AppliedAmount:   money.FormatMoneyFromCents(appliedAmount),
+					AvailableAmount: money.FormatMoneyFromCents(availableAmount),
 					Description:     credit.Description,
 				})
 			}
@@ -1023,18 +1041,26 @@ func (s *InvoiceService) ApplyInvoiceCredits(ctx context.Context, req dto.Create
 	appliedCredits, err := s.invoiceAppliedCreditStore.GetAllByInvoiceID(ctx, int64(req.InvoiceID))
 
 	// sum applied credits amount
-	appliedAmount := 0.0
+	appliedAmount := int64(0)
 	for _, appliedCredit := range appliedCredits {
-		appliedAmount += appliedCredit.Amount
+		appliedAmount += appliedCredit.AmountCents
 	}
 
 	if err != nil {
 		return fmt.Errorf("failed to get applied amount: %v", err)
 	}
 
-	availableAmount := creditMemo.Amount - appliedAmount
-	if req.Amount > availableAmount {
-		return fmt.Errorf("amount exceeds available credit. Available: %.2f, Requested: %.2f", availableAmount, req.Amount)
+	availableAmount := creditMemo.AmountCents - appliedAmount
+
+	amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+
+	amountCents, err := money.ParseUSDAmount(amountStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse amount: %v", err)
+	}
+
+	if amountCents > availableAmount {
+		return fmt.Errorf("amount exceeds available credit. Available: %.2f, Requested: %.2f", money.FormatMoneyFromCents(availableAmount), money.FormatMoneyFromCents(amountCents))
 	}
 
 	// Create invoice applied credit record (no transaction or splits needed)
@@ -1043,6 +1069,7 @@ func (s *InvoiceService) ApplyInvoiceCredits(ctx context.Context, req dto.Create
 		InvoiceID:    int64(req.InvoiceID),
 		CreditMemoID: int64(req.CreditMemoID),
 		Amount:       req.Amount,
+		AmountCents:  amountCents,
 		Description:  req.Description,
 		Date:         req.Date,
 		Status:       appliedCreditStatus,

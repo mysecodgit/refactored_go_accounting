@@ -156,8 +156,9 @@ type InvoiceListResponse struct {
 	CreatedAt             string       `json:"created_at"`
 	UpdatedAt             string       `json:"updated_at"`
 	PaidAmount            string       `json:"paid_amount"`
-	AppliedCreditsTotal   float64      `json:"applied_credits_total"`
-	AppliedDiscountsTotal float64      `json:"applied_discounts_total"`
+	AppliedCreditsTotal   string       `json:"applied_credits_total"`
+	AppliedDiscountsTotal string       `json:"applied_discounts_total"`
+	Balance               string       `json:"balance"`
 	People                store.People `json:"people"`
 	Unit                  store.Unit   `json:"unit"`
 }

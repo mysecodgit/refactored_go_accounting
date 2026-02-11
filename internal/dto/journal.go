@@ -40,9 +40,9 @@ type JournalResponse struct {
 type AvailableCreditMemo struct {
 	ID              int     `json:"id"`
 	Date            string  `json:"date"`
-	Amount          float64 `json:"amount"`
-	AppliedAmount   float64 `json:"applied_amount"`   // Amount already applied to other invoices
-	AvailableAmount float64 `json:"available_amount"` // Amount available to apply
+	Amount          string `json:"amount"`
+	AppliedAmount   string `json:"applied_amount"`   // Amount already applied to other invoices
+	AvailableAmount string `json:"available_amount"` // Amount available to apply
 	Description     string  `json:"description"`
 }
 

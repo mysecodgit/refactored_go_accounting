@@ -3,8 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-
-	
 )
 
 type CreditMemo struct {
@@ -15,9 +13,9 @@ type CreditMemo struct {
 	UserID           int64   `json:"user_id"`
 	DepositTo        int     `json:"deposit_to"`
 	LiabilityAccount int     `json:"liability_account"`
-	PeopleID         int64     `json:"people_id"`
-	BuildingID       int64     `json:"building_id"`
-	UnitID           int64     `json:"unit_id"`
+	PeopleID         int64   `json:"people_id"`
+	BuildingID       int64   `json:"building_id"`
+	UnitID           int64   `json:"unit_id"`
 	Amount           float64 `json:"amount"`
 	AmountCents      int64   `json:"amount_cents"`
 	Description      string  `json:"description"`
@@ -156,8 +154,6 @@ func (s *CreditMemoStore) GetAll(
 	return creditMemos, nil
 }
 
-
-
 func (s *CreditMemoStore) GetByID(ctx context.Context, id int64) (*CreditMemo, error) {
 	query := `
 		SELECT 
@@ -225,7 +221,24 @@ func (s *CreditMemoStore) GetByPeopleID(ctx context.Context, peopleID int64) ([]
 	var credits []CreditMemo
 	for rows.Next() {
 		var cm CreditMemo
-		if err := rows.Scan(&cm.ID, &cm.TransactionID, &cm.Reference, &cm.Date, &cm.UserID, &cm.DepositTo, &cm.LiabilityAccount, &cm.PeopleID, &cm.BuildingID, &cm.UnitID, &cm.Amount, &cm.Description, &cm.Status, &cm.CreatedAt, &cm.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&cm.ID,
+			&cm.TransactionID,
+			&cm.Reference,
+			&cm.Date,
+			&cm.UserID,
+			&cm.DepositTo,
+			&cm.LiabilityAccount,
+			&cm.PeopleID,
+			&cm.BuildingID,
+			&cm.UnitID,
+			&cm.Amount,
+			&cm.Description,
+			&cm.Status,
+			&cm.CreatedAt,
+			&cm.UpdatedAt,
+			&cm.AmountCents, // import to be last cause i used select * 
+		); err != nil {
 			return nil, err
 		}
 		credits = append(credits, cm)
