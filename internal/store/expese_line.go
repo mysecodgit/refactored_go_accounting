@@ -14,6 +14,7 @@ type ExpenseLine struct {
 	PeopleID    *int64  `json:"people_id,omitempty"`
 	Description *string `json:"description"`
 	Amount      float64 `json:"amount"`
+	AmountCents int64   `json:"amount_cents"`
 }
 
 type ExpenseLineStore struct {
@@ -25,7 +26,7 @@ func NewExpenseLineStore(db *sql.DB) *ExpenseLineStore {
 }
 
 func (s *ExpenseLineStore) GetAllByCheckID(ctx context.Context, checkID int64) ([]ExpenseLine, error) {
-	query := `SELECT id, check_id, account_id, unit_id, people_id, description, amount
+	query := `SELECT id, check_id, account_id, unit_id, people_id, description, amount, amount_cents
 			  FROM expense_lines
 			  WHERE check_id = ?
 			  ORDER BY id ASC`
@@ -50,6 +51,7 @@ func (s *ExpenseLineStore) GetAllByCheckID(ctx context.Context, checkID int64) (
 			&l.PeopleID,
 			&l.Description,
 			&l.Amount,
+			&l.AmountCents,
 		); err != nil {
 			return nil, err
 		}
@@ -60,7 +62,7 @@ func (s *ExpenseLineStore) GetAllByCheckID(ctx context.Context, checkID int64) (
 }
 
 func (s *ExpenseLineStore) GetByID(ctx context.Context, id int64) (*ExpenseLine, error) {
-	query := `SELECT id, check_id, account_id, unit_id, people_id, description, amount
+	query := `SELECT id, check_id, account_id, unit_id, people_id, description, amount, amount_cents
 			  FROM expense_lines
 			  WHERE id = ?`
 
@@ -76,6 +78,7 @@ func (s *ExpenseLineStore) GetByID(ctx context.Context, id int64) (*ExpenseLine,
 		&l.PeopleID,
 		&l.Description,
 		&l.Amount,
+		&l.AmountCents,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -89,8 +92,8 @@ func (s *ExpenseLineStore) GetByID(ctx context.Context, id int64) (*ExpenseLine,
 
 func (s *ExpenseLineStore) Create(ctx context.Context, tx *sql.Tx, l *ExpenseLine) (*int64, error) {
 	query := `INSERT INTO expense_lines
-			  (check_id, account_id, unit_id, people_id, description, amount)
-			  VALUES (?, ?, ?, ?, ?, ?)`
+			  (check_id, account_id, unit_id, people_id, description, amount, amount_cents)
+			  VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -102,6 +105,7 @@ func (s *ExpenseLineStore) Create(ctx context.Context, tx *sql.Tx, l *ExpenseLin
 		l.PeopleID,
 		l.Description,
 		l.Amount,
+		l.AmountCents,
 	)
 	if err != nil {
 		return nil, err
@@ -118,7 +122,7 @@ func (s *ExpenseLineStore) Create(ctx context.Context, tx *sql.Tx, l *ExpenseLin
 
 func (s *ExpenseLineStore) Update(ctx context.Context, tx *sql.Tx, l *ExpenseLine) (*int64, error) {
 	query := `UPDATE expense_lines
-			  SET check_id = ?, account_id = ?, unit_id = ?, people_id = ?, description = ?, amount = ?
+			  SET check_id = ?, account_id = ?, unit_id = ?, people_id = ?, description = ?, amount = ?, amount_cents = ?
 			  WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -131,6 +135,7 @@ func (s *ExpenseLineStore) Update(ctx context.Context, tx *sql.Tx, l *ExpenseLin
 		l.PeopleID,
 		l.Description,
 		l.Amount,
+		l.AmountCents,
 		l.ID,
 	)
 	if err != nil {
@@ -150,7 +155,7 @@ func (s *ExpenseLineStore) Update(ctx context.Context, tx *sql.Tx, l *ExpenseLin
 }
 
 func (s *ExpenseLineStore) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM expense_lines WHERE id = ?`
+	query := `delete from expense_lines WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -174,7 +179,7 @@ func (s *ExpenseLineStore) Delete(ctx context.Context, id int64) error {
 
 func (s *ExpenseLineStore) DeleteByCheckID(ctx context.Context, tx *sql.Tx, checkID int64) error {
 	fmt.Println("+-++++++++++++++++++++++++++++++++++++++++++++++ DeleteByCheckID", checkID)
-	query := `DELETE FROM expense_lines WHERE check_id = ?`
+	query := `delete from expense_lines WHERE check_id = ?`
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
 	result, err := tx.ExecContext(ctx, query, checkID)

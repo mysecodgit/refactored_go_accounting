@@ -14,6 +14,7 @@ type Check struct {
 	BuildingID       int64   `json:"building_id"`
 	Memo             *string `json:"memo"`
 	TotalAmount      float64 `json:"total_amount"`
+	AmountCents      int64   `json:"amount_cents"`
 	CreatedAt        string  `json:"created_at"`
 }
 
@@ -31,7 +32,7 @@ func (s *CheckStore) GetAll(
 	startDate, endDate *string,
 ) ([]Check, error) {
 	query := `SELECT id, transaction_id, check_date, reference_number,
-                     payment_account_id, building_id, memo, total_amount, created_at
+                     payment_account_id, building_id, memo, total_amount, amount_cents, created_at
               FROM checks
               WHERE building_id = ?`
 	args := []interface{}{buildingID}
@@ -68,6 +69,7 @@ func (s *CheckStore) GetAll(
 			&c.BuildingID,
 			&c.Memo,
 			&c.TotalAmount,
+			&c.AmountCents,
 			&c.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -80,7 +82,7 @@ func (s *CheckStore) GetAll(
 
 func (s *CheckStore) GetByID(ctx context.Context, id int64) (*Check, error) {
 	query := `SELECT id, transaction_id, check_date, reference_number,
-                     payment_account_id, building_id, memo, total_amount, created_at
+                     payment_account_id, building_id, memo, total_amount, amount_cents, created_at
               FROM checks
               WHERE id = ?`
 
@@ -97,6 +99,7 @@ func (s *CheckStore) GetByID(ctx context.Context, id int64) (*Check, error) {
 		&c.BuildingID,
 		&c.Memo,
 		&c.TotalAmount,
+		&c.AmountCents,
 		&c.CreatedAt,
 	)
 	if err != nil {
@@ -111,8 +114,8 @@ func (s *CheckStore) GetByID(ctx context.Context, id int64) (*Check, error) {
 
 func (s *CheckStore) Create(ctx context.Context, tx *sql.Tx, c *Check) (*int64, error) {
 	query := `INSERT INTO checks
-              (transaction_id, check_date, reference_number, payment_account_id, building_id, memo, total_amount)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`
+              (transaction_id, check_date, reference_number, payment_account_id, building_id, memo, total_amount, amount_cents)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -125,6 +128,7 @@ func (s *CheckStore) Create(ctx context.Context, tx *sql.Tx, c *Check) (*int64, 
 		c.BuildingID,
 		c.Memo,
 		c.TotalAmount,
+		c.AmountCents,
 	)
 	if err != nil {
 		return nil, err
@@ -142,7 +146,7 @@ func (s *CheckStore) Create(ctx context.Context, tx *sql.Tx, c *Check) (*int64, 
 func (s *CheckStore) Update(ctx context.Context, tx *sql.Tx, c *Check) (*int64, error) {
 	query := `UPDATE checks
               SET transaction_id = ?, check_date = ?, reference_number = ?,
-                  payment_account_id = ?, building_id = ?, memo = ?, total_amount = ?
+                  payment_account_id = ?, building_id = ?, memo = ?, total_amount = ?, amount_cents = ?
               WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -156,6 +160,7 @@ func (s *CheckStore) Update(ctx context.Context, tx *sql.Tx, c *Check) (*int64, 
 		c.BuildingID,
 		c.Memo,
 		c.TotalAmount,
+		c.AmountCents,
 		c.ID,
 	)
 	if err != nil {

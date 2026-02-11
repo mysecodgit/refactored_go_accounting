@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	_ "github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
@@ -81,43 +83,46 @@ func (s *CheckService) GetAll(
 	ctx context.Context,
 	buildingID int64,
 	startDate, endDate *string,
-) ([]store.Check, error) {
-	return s.checkStore.GetAll(ctx, buildingID, startDate, endDate)
+) ([]*dto.CheckDto, error) {
+	checks, err := s.checkStore.GetAll(ctx, buildingID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get checks: %v", err)
+	}
+	return dto.MapChecksToDtos(checks), nil
 }
 
-type CheckResponseDetails struct {
-	Check        store.Check         `json:"check"`
-	ExpenseLines []store.ExpenseLine `json:"expense_lines"`
-	Splits       []store.Split       `json:"splits"`
-	Transaction  store.Transaction   `json:"transaction"`
-}
-
-func (s *CheckService) GetByID(ctx context.Context, id int64) (*CheckResponseDetails, error) {
+func (s *CheckService) GetByID(ctx context.Context, id int64) (*dto.CheckResponseDetails, error) {
 
 	check, err := s.checkStore.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("check not found: %v", err)
 	}
 
+	checkDto := dto.MapCheckToDto(*check)
+
 	expenseLines, err := s.expenseLineStore.GetAllByCheckID(ctx, check.ID)
 	if err != nil {
 		return nil, fmt.Errorf("expense lines not found: %v", err)
 	}
+
+	expenseLinesDto := dto.MapExpenseLinesToDtos(expenseLines)
 
 	splits, err := s.splitStore.GetByTransactionID(ctx, check.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("splits not found: %v", err)
 	}
 
+	splitsDto := dto.MapSplitsToDto(splits)
+
 	transaction, err := s.transactionStore.GetByID(ctx, check.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("transaction not found: %v", err)
 	}
 
-	return &CheckResponseDetails{
-		Check:        *check,
-		ExpenseLines: expenseLines,
-		Splits:       splits,
+	return &dto.CheckResponseDetails{
+		Check:        checkDto,
+		ExpenseLines: expenseLinesDto,
+		Splits:       splitsDto,
 		Transaction:  *transaction,
 	}, nil
 }
@@ -146,6 +151,12 @@ func (s *CheckService) Create(ctx context.Context, req dto.CreateCheckRequest) e
 			return err
 		}
 
+		totalAmountStr := strconv.FormatFloat(req.TotalAmount, 'f', -1, 64)
+		totalAmountCents, err := money.ParseUSDAmount(totalAmountStr)
+		if err != nil {
+			return err
+		}
+
 		// create check
 		check := &store.Check{
 			TransactionID:    *transactionId,
@@ -155,6 +166,7 @@ func (s *CheckService) Create(ctx context.Context, req dto.CreateCheckRequest) e
 			BuildingID:       req.BuildingID,
 			Memo:             req.Memo,
 			TotalAmount:      req.TotalAmount,
+			AmountCents:      totalAmountCents,
 		}
 		checkId, err := s.checkStore.Create(ctx, tx, check)
 		if err != nil {
@@ -163,6 +175,11 @@ func (s *CheckService) Create(ctx context.Context, req dto.CreateCheckRequest) e
 
 		// create expense lines
 		for _, line := range req.ExpenseLines {
+			amountStr := strconv.FormatFloat(line.Amount, 'f', -1, 64)
+			amountCents, err := money.ParseUSDAmount(amountStr)
+			if err != nil {
+				return err
+			}
 			expenseLine := &store.ExpenseLine{
 				CheckID:     *checkId,
 				AccountID:   line.AccountID,
@@ -170,8 +187,9 @@ func (s *CheckService) Create(ctx context.Context, req dto.CreateCheckRequest) e
 				PeopleID:    line.PeopleID,
 				Description: line.Description,
 				Amount:      line.Amount,
+				AmountCents: amountCents,
 			}
-			_, err := s.expenseLineStore.Create(ctx, tx, expenseLine)
+			_, err = s.expenseLineStore.Create(ctx, tx, expenseLine)
 			if err != nil {
 				return err
 			}
@@ -182,6 +200,12 @@ func (s *CheckService) Create(ctx context.Context, req dto.CreateCheckRequest) e
 		if err != nil {
 			return err
 		}
+
+		// validate splits
+		if err := s.ValidateSplits(splits); err != nil {
+			return err
+		}
+
 		for _, split := range splits {
 			split.TransactionID = *transactionId
 			err = s.splitStore.Create(ctx, tx, &split)
@@ -221,6 +245,12 @@ func (s *CheckService) Update(ctx context.Context, req dto.UpdateCheckRequest, c
 			}
 		}
 
+		amountStr := strconv.FormatFloat(req.TotalAmount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return err
+		}
+
 		// update check
 		updatedCheck := &store.Check{
 			ID:               checkId,
@@ -231,6 +261,7 @@ func (s *CheckService) Update(ctx context.Context, req dto.UpdateCheckRequest, c
 			BuildingID:       req.BuildingID,
 			Memo:             req.Memo,
 			TotalAmount:      req.TotalAmount,
+			AmountCents:      amountCents,
 		}
 
 		_, err = s.checkStore.Update(ctx, tx, updatedCheck)
@@ -241,6 +272,12 @@ func (s *CheckService) Update(ctx context.Context, req dto.UpdateCheckRequest, c
 
 		// recreate expense lines
 		for _, line := range req.ExpenseLines {
+			amountStr := strconv.FormatFloat(line.Amount, 'f', -1, 64)
+			amountCents, err := money.ParseUSDAmount(amountStr)
+			if err != nil {
+				return err
+			}
+
 			expenseLine := &store.ExpenseLine{
 				CheckID:     checkId,
 				AccountID:   line.AccountID,
@@ -248,6 +285,7 @@ func (s *CheckService) Update(ctx context.Context, req dto.UpdateCheckRequest, c
 				PeopleID:    line.PeopleID,
 				Description: line.Description,
 				Amount:      line.Amount,
+				AmountCents: amountCents,
 			}
 			_, err = s.expenseLineStore.Create(ctx, tx, expenseLine)
 			if err != nil {
@@ -286,6 +324,13 @@ func (s *CheckService) Update(ctx context.Context, req dto.UpdateCheckRequest, c
 			fmt.Println("Failed to generate splits", err)
 			return err
 		}
+
+		// validate splits
+		if err := s.ValidateSplits(splits); err != nil {
+			fmt.Println("Failed to validate splits", err)
+			return err
+		}
+
 		for _, split := range splits {
 			split.TransactionID = existingCheck.TransactionID
 			err = s.splitStore.Create(ctx, tx, &split)
@@ -321,6 +366,13 @@ func (s *CheckService) GenerateCheckSplits(
 	}
 
 	amount := req.TotalAmount
+
+	amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	amountCents, err := money.ParseUSDAmount(amountStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse amount: %v", err)
+	}
+
 	if amount <= 0 {
 		return nil, fmt.Errorf("amount must be greater than zero")
 	}
@@ -328,12 +380,14 @@ func (s *CheckService) GenerateCheckSplits(
 	splits := make([]store.Split, 0)
 
 	debitSplit := store.Split{
-		AccountID: int64(req.PaymentAccountID),
-		Debit:     &amount,
-		Credit:    nil,
-		UnitID:    nil,
-		PeopleID:  nil,
-		Status:    "1",
+		AccountID:   int64(req.PaymentAccountID),
+		Debit:       &amount,
+		DebitCents:  &amountCents,
+		Credit:      nil,
+		CreditCents: nil,
+		UnitID:      nil,
+		PeopleID:    nil,
+		Status:      "1",
 	}
 
 	splits = append(splits, debitSplit)
@@ -344,16 +398,47 @@ func (s *CheckService) GenerateCheckSplits(
 			return nil, fmt.Errorf("account not found: %v", err)
 		}
 
+		amountStr := strconv.FormatFloat(line.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse amount: %v", err)
+		}
+
 		splits = append(splits, store.Split{
-			AccountID: int64(line.AccountID),
-			Credit:    &amount,
-			Debit:     nil,
-			UnitID:    line.UnitID,
-			PeopleID:  line.PeopleID,
-			Status:    "1",
+			AccountID:   int64(line.AccountID),
+			Credit:      &amount,
+			CreditCents: &amountCents,
+			Debit:       nil,
+			DebitCents:  nil,
+			UnitID:      line.UnitID,
+			PeopleID:    line.PeopleID,
+			Status:      "1",
 		})
 
 	}
 
 	return splits, nil
+}
+
+// validate splits
+func (s *CheckService) ValidateSplits(splits []store.Split) error {
+	totalDebitCents := int64(0)
+	totalCreditCents := int64(0)
+	for _, split := range splits {
+		if split.DebitCents != nil {
+			totalDebitCents += *split.DebitCents
+		}
+		if split.CreditCents != nil {
+			totalCreditCents += *split.CreditCents
+		}
+	}
+
+	debitAmount := money.FormatMoneyFromCents(totalDebitCents)
+	creditAmount := money.FormatMoneyFromCents(totalCreditCents)
+
+	if totalDebitCents != totalCreditCents {
+		return fmt.Errorf("split must have %s debit and credit %s", debitAmount, creditAmount)
+	}
+
+	return nil
 }
