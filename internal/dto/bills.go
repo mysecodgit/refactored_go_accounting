@@ -56,10 +56,10 @@ type UpdateBillPaymentRequest struct {
 }
 
 type BillPaymentResponse struct {
-	Payment     store.BillPayment `json:"payment"`
-	Splits      []store.Split     `json:"splits"`
+	Payment     BillPaymentDto `json:"payment"`
+	Splits      []SplitDto     `json:"splits"`
 	Transaction store.Transaction `json:"transaction"`
-	Bill        store.Bill        `json:"bill"`
+	Bill        BillDto        `json:"bill"`
 	APAccount   *store.Account    `json:"ap_account,omitempty"`
 }
 
@@ -153,4 +153,49 @@ type BillResponseDetails struct {
 	ExpenseLines []*BillExpenseLineDto `json:"expense_lines"`
 	Splits       []SplitDto           `json:"splits"`
 	Transaction  store.Transaction       `json:"transaction"`
+}
+
+type BillPaymentDto struct {
+	ID int64 `json:"id"`
+
+	TransactionID int64  `json:"transaction_id"`
+	Reference     string `json:"reference"`
+	Date          string `json:"date"`
+
+	BillID    int64 `json:"bill_id"`
+	UserID    int64 `json:"user_id"`
+	AccountID int64 `json:"account_id"`
+
+	Amount string `json:"amount"`
+	Status string  `json:"status"` // enum('0','1')
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// map store.BillPayment to BillPaymentDto
+func MapBillPaymentToDto(p store.BillPayment) *BillPaymentDto {
+	return &BillPaymentDto{
+		ID: p.ID,
+		TransactionID: p.TransactionID,
+		Reference: p.Reference,
+		Date: p.Date,
+		BillID: p.BillID,
+		UserID: p.UserID,
+		AccountID: p.AccountID,
+		Amount: money.FormatMoneyFromCents(p.AmountCents),
+		Status: p.Status,
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: p.UpdatedAt,
+	}
+}
+
+
+// map []store.BillPayment to []BillPaymentDto
+func MapBillPaymentsToDtos(payments []store.BillPayment) []*BillPaymentDto {
+	var dtoPayments []*BillPaymentDto
+	for _, p := range payments {
+		dtoPayments = append(dtoPayments, MapBillPaymentToDto(p))
+	}
+	return dtoPayments
 }

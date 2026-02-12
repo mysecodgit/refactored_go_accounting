@@ -12,11 +12,12 @@ type BillPayment struct {
 	Reference     string `json:"reference"`
 	Date          string `json:"date"`
 
-	BillID   int64 `json:"bill_id"`
-	UserID   int64 `json:"user_id"`
+	BillID    int64 `json:"bill_id"`
+	UserID    int64 `json:"user_id"`
 	AccountID int64 `json:"account_id"`
 
 	Amount float64 `json:"amount"`
+	AmountCents int64 `json:"amount_cents"`
 	Status string  `json:"status"` // enum('0','1')
 
 	CreatedAt string `json:"created_at"`
@@ -35,7 +36,7 @@ func (s *BillPaymentStore) GetAll(ctx context.Context, buildingID int64, startDa
 	query := `
 		SELECT bp.id, bp.transaction_id, bp.reference, bp.date,
 		       bp.bill_id, bp.user_id, bp.account_id,
-		       bp.amount, bp.status, bp.createdAt, bp.updatedAt
+		       bp.amount, bp.amount_cents, bp.status, bp.createdAt, bp.updatedAt
 		FROM bill_payments bp
 		INNER JOIN bills b ON bp.bill_id = b.id
 		WHERE b.building_id = ?
@@ -82,6 +83,7 @@ func (s *BillPaymentStore) GetAll(ctx context.Context, buildingID int64, startDa
 			&p.UserID,
 			&p.AccountID,
 			&p.Amount,
+			&p.AmountCents,
 			&p.Status,
 			&p.CreatedAt,
 			&p.UpdatedAt,
@@ -98,7 +100,7 @@ func (s *BillPaymentStore) GetAllByBillID(ctx context.Context, billID int64) ([]
 	query := `
 		SELECT id, transaction_id, reference, date,
 		       bill_id, user_id, account_id,
-		       amount, status, createdAt, updatedAt
+		       amount, amount_cents, status, createdAt, updatedAt
 		FROM bill_payments
 		WHERE bill_id = ?
 		ORDER BY createdAt DESC
@@ -125,6 +127,7 @@ func (s *BillPaymentStore) GetAllByBillID(ctx context.Context, billID int64) ([]
 			&p.UserID,
 			&p.AccountID,
 			&p.Amount,
+			&p.AmountCents,
 			&p.Status,
 			&p.CreatedAt,
 			&p.UpdatedAt,
@@ -140,7 +143,7 @@ func (s *BillPaymentStore) GetByID(ctx context.Context, id int64) (*BillPayment,
 	query := `
 		SELECT id, transaction_id, reference, date,
 		       bill_id, user_id, account_id,
-		       amount, status, createdAt, updatedAt
+		       amount, amount_cents, status, createdAt, updatedAt
 		FROM bill_payments
 		WHERE id = ?
 	`
@@ -158,6 +161,7 @@ func (s *BillPaymentStore) GetByID(ctx context.Context, id int64) (*BillPayment,
 		&p.UserID,
 		&p.AccountID,
 		&p.Amount,
+		&p.AmountCents,
 		&p.Status,
 		&p.CreatedAt,
 		&p.UpdatedAt,
@@ -175,7 +179,7 @@ func (s *BillPaymentStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) 
 	query := `
 		SELECT id, transaction_id, reference, date,
 		       bill_id, user_id, account_id,
-		       amount, status, createdAt, updatedAt
+		       amount, amount_cents, status, createdAt, updatedAt
 		FROM bill_payments
 		WHERE id = ?
 	`
@@ -193,6 +197,7 @@ func (s *BillPaymentStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) 
 		&p.UserID,
 		&p.AccountID,
 		&p.Amount,
+		&p.AmountCents,
 		&p.Status,
 		&p.CreatedAt,
 		&p.UpdatedAt,
@@ -209,8 +214,8 @@ func (s *BillPaymentStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) 
 func (s *BillPaymentStore) Create(ctx context.Context, tx *sql.Tx, p *BillPayment) (*BillPayment, error) {
 	query := `
 		INSERT INTO bill_payments
-		(transaction_id, reference, date, bill_id, user_id, account_id, amount, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, "1")
+		(transaction_id, reference, date, bill_id, user_id, account_id, amount, amount_cents, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, "1")
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -224,6 +229,7 @@ func (s *BillPaymentStore) Create(ctx context.Context, tx *sql.Tx, p *BillPaymen
 		p.UserID,
 		p.AccountID,
 		p.Amount,
+		p.AmountCents,
 	)
 	if err != nil {
 		return nil, err
@@ -241,7 +247,7 @@ func (s *BillPaymentStore) Create(ctx context.Context, tx *sql.Tx, p *BillPaymen
 func (s *BillPaymentStore) Update(ctx context.Context, tx *sql.Tx, p *BillPayment) (*BillPayment, error) {
 	query := `
 		UPDATE bill_payments
-		SET reference = ?, date = ?, account_id = ?, amount = ?, status = ?
+		SET reference = ?, date = ?, account_id = ?, amount = ?, amount_cents = ?, status = ?
 		WHERE id = ?
 	`
 
@@ -253,6 +259,7 @@ func (s *BillPaymentStore) Update(ctx context.Context, tx *sql.Tx, p *BillPaymen
 		p.Date,
 		p.AccountID,
 		p.Amount,
+		p.AmountCents,
 		p.Status,
 		p.ID,
 	)
@@ -283,4 +290,3 @@ func (s *BillPaymentStore) Delete(ctx context.Context, id int64) error {
 	}
 	return nil
 }
-

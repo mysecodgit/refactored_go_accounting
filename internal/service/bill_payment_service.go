@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
@@ -78,8 +79,12 @@ func (s *BillPaymentService) GetAll(
 	endDate *string,
 	peopleID *int,
 	status *string,
-) ([]store.BillPayment, error) {
-	return s.billPaymentStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+) ([]*dto.BillPaymentDto, error) {
+	payments, err := s.billPaymentStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+	if err != nil {
+		return nil, err
+	}
+	return dto.MapBillPaymentsToDtos(payments), nil
 }
 
 func (s *BillPaymentService) GetByID(
@@ -91,10 +96,14 @@ func (s *BillPaymentService) GetByID(
 		return nil, err
 	}
 
+	dtoPayment := dto.MapBillPaymentToDto(*payment)
+
 	splits, err := s.splitStore.GetByTransactionID(ctx, payment.TransactionID)
 	if err != nil {
 		return nil, err
 	}
+
+	dtoSplits := dto.MapSplitsToDto(splits)
 
 	transaction, err := s.transactionStore.GetByID(ctx, payment.TransactionID)
 	if err != nil {
@@ -106,16 +115,18 @@ func (s *BillPaymentService) GetByID(
 		return nil, err
 	}
 
+	dtoBill := dto.MapBillToDto(*bill)
+
 	apAccount, err := s.accountStore.GetByID(ctx, bill.APAccountID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &dto.BillPaymentResponse{
-		Payment:     *payment,
-		Splits:      splits,
+		Payment:     *dtoPayment,
+		Splits:      dtoSplits,
 		Transaction: *transaction,
-		Bill:        *bill,
+		Bill:        *dtoBill,
 		APAccount:   apAccount,
 	}, nil
 }
@@ -172,13 +183,21 @@ func (s *BillPaymentService) Create(ctx context.Context, paymentDTO dto.CreateBi
 			return err
 		}
 
+		amountStr := strconv.FormatFloat(paymentDTO.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse amount: %v", err)
+		}
+
 		// Create splits
 		// Debit Asset Account (cash/bank)
 		debitSplit := store.Split{
 			TransactionID: *transactionID,
 			AccountID:     assetAccount.ID,
 			Debit:         &paymentDTO.Amount,
+			DebitCents:    &amountCents,
 			Credit:        nil,
+			CreditCents:   nil,
 			UnitID:        bill.UnitID,
 			PeopleID:      bill.PeopleID,
 			Status:        "1",
@@ -193,7 +212,9 @@ func (s *BillPaymentService) Create(ctx context.Context, paymentDTO dto.CreateBi
 			TransactionID: *transactionID,
 			AccountID:     apAccount.ID,
 			Credit:        &paymentDTO.Amount,
+			CreditCents:   &amountCents,
 			Debit:         nil,
+			DebitCents:   nil,
 			UnitID:        bill.UnitID,
 			PeopleID:      bill.PeopleID,
 			Status:        "1",
@@ -212,6 +233,7 @@ func (s *BillPaymentService) Create(ctx context.Context, paymentDTO dto.CreateBi
 			UserID:        1, // TODO: get user id from jwt
 			AccountID:     int64(paymentDTO.AccountID),
 			Amount:        paymentDTO.Amount,
+			AmountCents:   amountCents,
 			Status:        "1",
 		}
 
@@ -247,6 +269,12 @@ func (s *BillPaymentService) Update(
 			return fmt.Errorf("account not found")
 		}
 
+		amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse amount: %v", err)
+		}
+
 		// Update bill payment
 		updatedPayment := &store.BillPayment{
 			ID:            paymentID,
@@ -257,6 +285,7 @@ func (s *BillPaymentService) Update(
 			UserID:        1, // TODO: get user id from jwt
 			AccountID:     int64(req.AccountID),
 			Amount:        req.Amount,
+			AmountCents:   amountCents,
 			Status:        strconv.Itoa(req.Status),
 		}
 
@@ -303,7 +332,9 @@ func (s *BillPaymentService) Update(
 			TransactionID: existing.TransactionID,
 			AccountID:     int64(req.AccountID),
 			Debit:         &req.Amount,
+			DebitCents:    &amountCents,
 			Credit:        nil,
+			CreditCents:   nil,
 			UnitID:        bill.UnitID,
 			PeopleID:      bill.PeopleID,
 			Status:        "1",
@@ -318,7 +349,9 @@ func (s *BillPaymentService) Update(
 			TransactionID: existing.TransactionID,
 			AccountID:     apAccount.ID,
 			Credit:        &req.Amount,
+			CreditCents:   &amountCents,
 			Debit:         nil,
+			DebitCents:   nil,
 			UnitID:        bill.UnitID,
 			PeopleID:      bill.PeopleID,
 			Status:        "1",
