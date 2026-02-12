@@ -16,6 +16,7 @@ type Bill struct {
 	PeopleID      *int64  `json:"people_id"`
 	UserID        int64   `json:"user_id"`
 	Amount        float64 `json:"amount"`
+	AmountCents   int64   `json:"amount_cents"`
 	Description   string  `json:"description"`
 	CancelReason  *string `json:"cancel_reason"`
 	Status        string  `json:"status"` // enum('0','1')
@@ -35,7 +36,7 @@ func NewBillStore(db *sql.DB) *BillStore {
 func (s *BillStore) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string, peopleID *int, status *string) ([]Bill, error) {
 	query := `
 		SELECT id, bill_no, transaction_id, bill_date, due_date,
-		       ap_account_id, unit_id, people_id, user_id, amount,
+		       ap_account_id, unit_id, people_id, user_id, amount, amount_cents,
 		       description, cancel_reason, status, building_id, createdAt, updatedAt
 		FROM bills
 		WHERE building_id = ?
@@ -84,6 +85,7 @@ func (s *BillStore) GetAll(ctx context.Context, buildingID int64, startDate, end
 			&b.PeopleID,
 			&b.UserID,
 			&b.Amount,
+			&b.AmountCents,
 			&b.Description,
 			&b.CancelReason,
 			&b.Status,
@@ -102,7 +104,7 @@ func (s *BillStore) GetAll(ctx context.Context, buildingID int64, startDate, end
 func (s *BillStore) GetByID(ctx context.Context, id int64) (*Bill, error) {
 	query := `
 		SELECT id, bill_no, transaction_id, bill_date, due_date,
-		       ap_account_id, unit_id, people_id, user_id, amount,
+		       ap_account_id, unit_id, people_id, user_id, amount, amount_cents,
 		       description, cancel_reason, status, building_id, createdAt, updatedAt
 		FROM bills
 		WHERE id = ?
@@ -122,6 +124,7 @@ func (s *BillStore) GetByID(ctx context.Context, id int64) (*Bill, error) {
 		&b.PeopleID,
 		&b.UserID,
 		&b.Amount,
+		&b.AmountCents,
 		&b.Description,
 		&b.CancelReason,
 		&b.Status,
@@ -142,9 +145,9 @@ func (s *BillStore) Create(ctx context.Context, tx *sql.Tx, b *Bill) (*int64, er
 	query := `
 		INSERT INTO bills
 		(bill_no, transaction_id, bill_date, due_date,
-		 ap_account_id, unit_id, people_id, user_id, amount,
+		 ap_account_id, unit_id, people_id, user_id, amount, amount_cents,
 		 description, cancel_reason, status, building_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "1", ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "1", ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -160,6 +163,7 @@ func (s *BillStore) Create(ctx context.Context, tx *sql.Tx, b *Bill) (*int64, er
 		b.PeopleID,
 		b.UserID,
 		b.Amount,
+		b.AmountCents,
 		b.Description,
 		b.CancelReason,
 		b.BuildingID,
@@ -182,7 +186,7 @@ func (s *BillStore) Update(ctx context.Context, tx *sql.Tx, b *Bill) (*int64, er
 		UPDATE bills
 		SET bill_no = ?, bill_date = ?, due_date = ?,
 		    ap_account_id = ?, unit_id = ?, people_id = ?, user_id = ?,
-		    amount = ?, description = ?, cancel_reason = ?, status = ?, building_id = ?
+		    amount = ?, amount_cents = ?, description = ?, cancel_reason = ?, status = ?, building_id = ?
 		WHERE id = ?
 	`
 
@@ -198,6 +202,7 @@ func (s *BillStore) Update(ctx context.Context, tx *sql.Tx, b *Bill) (*int64, er
 		b.PeopleID,
 		b.UserID,
 		b.Amount,
+		b.AmountCents,
 		b.Description,
 		b.CancelReason,
 		b.Status,

@@ -13,6 +13,7 @@ type BillExpenseLine struct {
 	PeopleID    *int64  `json:"people_id"`
 	Description *string `json:"description"`
 	Amount      float64 `json:"amount"`
+	AmountCents int64   `json:"amount_cents"`
 }
 
 type BillExpenseLineStore struct {
@@ -25,7 +26,7 @@ func NewBillExpenseLineStore(db *sql.DB) *BillExpenseLineStore {
 
 func (s *BillExpenseLineStore) GetAllByBillID(ctx context.Context, billID int64) ([]BillExpenseLine, error) {
 	query := `
-		SELECT id, bill_id, account_id, unit_id, people_id, description, amount
+		SELECT id, bill_id, account_id, unit_id, people_id, description, amount, amount_cents
 		FROM bill_expense_lines
 		WHERE bill_id = ?
 		ORDER BY id ASC
@@ -51,6 +52,7 @@ func (s *BillExpenseLineStore) GetAllByBillID(ctx context.Context, billID int64)
 			&l.PeopleID,
 			&l.Description,
 			&l.Amount,
+			&l.AmountCents,
 		); err != nil {
 			return nil, err
 		}
@@ -62,8 +64,8 @@ func (s *BillExpenseLineStore) GetAllByBillID(ctx context.Context, billID int64)
 func (s *BillExpenseLineStore) Create(ctx context.Context, tx *sql.Tx, l *BillExpenseLine) (*int64, error) {
 	query := `
 		INSERT INTO bill_expense_lines
-		(bill_id, account_id, unit_id, people_id, description, amount)
-		VALUES (?, ?, ?, ?, ?, ?)
+		(bill_id, account_id, unit_id, people_id, description, amount, amount_cents)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -76,6 +78,7 @@ func (s *BillExpenseLineStore) Create(ctx context.Context, tx *sql.Tx, l *BillEx
 		l.PeopleID,
 		l.Description,
 		l.Amount,
+		l.AmountCents,
 	)
 	if err != nil {
 		return nil, err

@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
@@ -36,12 +38,12 @@ type BillExpenseLineStore interface {
 */
 
 type BillService struct {
-	db                  *sql.DB
-	billStore           BillStore
+	db                   *sql.DB
+	billStore            BillStore
 	billExpenseLineStore BillExpenseLineStore
-	splitStore          SplitStore
-	transactionStore    TransactionStore
-	accountStore        AccountStore
+	splitStore           SplitStore
+	transactionStore     TransactionStore
+	accountStore         AccountStore
 }
 
 /*
@@ -59,12 +61,12 @@ func NewBillService(
 	accountStore AccountStore,
 ) *BillService {
 	return &BillService{
-		db:                  db,
-		billStore:           billStore,
+		db:                   db,
+		billStore:            billStore,
 		billExpenseLineStore: billExpenseLineStore,
-		splitStore:          splitStore,
-		transactionStore:    transactionStore,
-		accountStore:        accountStore,
+		splitStore:           splitStore,
+		transactionStore:     transactionStore,
+		accountStore:         accountStore,
 	}
 }
 
@@ -80,21 +82,23 @@ func (s *BillService) GetAll(
 	startDate, endDate *string,
 	peopleID *int,
 	status *string,
-) ([]store.Bill, error) {
-	return s.billStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+) ([]*dto.BillDto, error) {
+	bills, err := s.billStore.GetAll(ctx, buildingID, startDate, endDate, peopleID, status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bills: %v", err)
+	}
+	return dto.MapBillsToDtos(bills), nil
 }
 
-type BillResponseDetails struct {
-	Bill         store.Bill           `json:"bill"`
-	ExpenseLines []store.BillExpenseLine `json:"expense_lines"`
-	Splits       []store.Split         `json:"splits"`
-	Transaction  store.Transaction     `json:"transaction"`
-}
-
-func (s *BillService) GetByID(ctx context.Context, id int64) (*BillResponseDetails, error) {
+func (s *BillService) GetByID(ctx context.Context, id int64) (*dto.BillResponseDetails, error) {
 	bill, err := s.billStore.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("bill not found: %v", err)
+	}
+
+	var dtoBill *dto.BillDto
+	if bill != nil {
+		dtoBill = dto.MapBillToDto(*bill)
 	}
 
 	expenseLines, err := s.billExpenseLineStore.GetAllByBillID(ctx, bill.ID)
@@ -102,20 +106,27 @@ func (s *BillService) GetByID(ctx context.Context, id int64) (*BillResponseDetai
 		return nil, fmt.Errorf("expense lines not found: %v", err)
 	}
 
+	var dtoExpenseLines []*dto.BillExpenseLineDto
+	if expenseLines != nil {
+		dtoExpenseLines = dto.MapBillExpenseLinesToDtos(expenseLines)
+	}
+
 	splits, err := s.splitStore.GetByTransactionID(ctx, bill.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("splits not found: %v", err)
 	}
+
+	dtoSplits := dto.MapSplitsToDto(splits)
 
 	transaction, err := s.transactionStore.GetByID(ctx, bill.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("transaction not found: %v", err)
 	}
 
-	return &BillResponseDetails{
-		Bill:         *bill,
-		ExpenseLines: expenseLines,
-		Splits:       splits,
+	return &dto.BillResponseDetails{
+		Bill:         *dtoBill,
+		ExpenseLines: dtoExpenseLines,
+		Splits:       dtoSplits,
 		Transaction:  *transaction,
 	}, nil
 }
@@ -144,6 +155,11 @@ func (s *BillService) Create(ctx context.Context, req dto.CreateBillRequest) err
 			return err
 		}
 
+		amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse amount: %v", err)
+		}
 		// Create bill
 		bill := &store.Bill{
 			TransactionID: *transactionID,
@@ -155,8 +171,9 @@ func (s *BillService) Create(ctx context.Context, req dto.CreateBillRequest) err
 			PeopleID:      req.PeopleID,
 			UserID:        1, // TODO: get user id from jwt
 			Amount:        req.Amount,
+			AmountCents:   amountCents,
 			Description:   req.Description,
-			CancelReason:   nil,
+			CancelReason:  nil,
 			Status:        "1",
 			BuildingID:    req.BuildingID,
 		}
@@ -167,6 +184,13 @@ func (s *BillService) Create(ctx context.Context, req dto.CreateBillRequest) err
 
 		// Create expense lines
 		for _, line := range req.ExpenseLines {
+
+			amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+			amountCents, err := money.ParseUSDAmount(amountStr)
+			if err != nil {
+				return fmt.Errorf("failed to parse amount: %v", err)
+			}
+
 			expenseLine := &store.BillExpenseLine{
 				BillID:      *billID,
 				AccountID:   line.AccountID,
@@ -174,8 +198,9 @@ func (s *BillService) Create(ctx context.Context, req dto.CreateBillRequest) err
 				PeopleID:    line.PeopleID,
 				Description: line.Description,
 				Amount:      line.Amount,
+				AmountCents: amountCents,
 			}
-			_, err := s.billExpenseLineStore.Create(ctx, tx, expenseLine)
+			_, err = s.billExpenseLineStore.Create(ctx, tx, expenseLine)
 			if err != nil {
 				return err
 			}
@@ -186,6 +211,11 @@ func (s *BillService) Create(ctx context.Context, req dto.CreateBillRequest) err
 		if err != nil {
 			return err
 		}
+
+		if err := validateSplitsBalanced(splits); err != nil {
+			return err
+		}
+
 		for _, split := range splits {
 			split.TransactionID = *transactionID
 			err = s.splitStore.Create(ctx, tx, &split)
@@ -217,6 +247,12 @@ func (s *BillService) Update(ctx context.Context, req dto.UpdateBillRequest, bil
 			}
 		}
 
+		amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse amount: %v", err)
+		}
+
 		// Update bill
 		updatedBill := &store.Bill{
 			ID:            billID,
@@ -229,6 +265,7 @@ func (s *BillService) Update(ctx context.Context, req dto.UpdateBillRequest, bil
 			PeopleID:      req.PeopleID,
 			UserID:        1, // TODO: get user id from jwt
 			Amount:        req.Amount,
+			AmountCents:   amountCents,
 			Description:   req.Description,
 			CancelReason:  existingBill.CancelReason,
 			Status:        existingBill.Status,
@@ -242,6 +279,12 @@ func (s *BillService) Update(ctx context.Context, req dto.UpdateBillRequest, bil
 
 		// Recreate expense lines
 		for _, line := range req.ExpenseLines {
+			amountStr := strconv.FormatFloat(req.Amount, 'f', -1, 64)
+			amountCents, err := money.ParseUSDAmount(amountStr)
+			if err != nil {
+				return fmt.Errorf("failed to parse amount: %v", err)
+			}
+
 			expenseLine := &store.BillExpenseLine{
 				BillID:      billID,
 				AccountID:   line.AccountID,
@@ -249,6 +292,7 @@ func (s *BillService) Update(ctx context.Context, req dto.UpdateBillRequest, bil
 				PeopleID:    line.PeopleID,
 				Description: line.Description,
 				Amount:      line.Amount,
+				AmountCents: amountCents,
 			}
 			_, err = s.billExpenseLineStore.Create(ctx, tx, expenseLine)
 			if err != nil {
@@ -283,6 +327,11 @@ func (s *BillService) Update(ctx context.Context, req dto.UpdateBillRequest, bil
 		if err != nil {
 			return err
 		}
+
+		if err := validateSplitsBalanced(splits); err != nil {
+			return err
+		}
+
 		for _, split := range splits {
 			split.TransactionID = existingBill.TransactionID
 			err = s.splitStore.Create(ctx, tx, &split)
@@ -309,16 +358,24 @@ func (s *BillService) GenerateBillSplits(
 		return nil, fmt.Errorf("amount must be greater than zero")
 	}
 
+	amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	amountCents, err := money.ParseUSDAmount(amountStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse amount: %v", err)
+	}
+
 	splits := make([]store.Split, 0)
 
 	// Credit AP account (liability increases)
 	creditSplit := store.Split{
-		AccountID: req.APAccountID,
-		Credit:    &amount,
-		Debit:     nil,
-		UnitID:    req.UnitID,
-		PeopleID:  req.PeopleID,
-		Status:    "1",
+		AccountID:   req.APAccountID,
+		Credit:      &amount,
+		CreditCents: &amountCents,
+		Debit:       nil,
+		DebitCents:  nil,
+		UnitID:      req.UnitID,
+		PeopleID:    req.PeopleID,
+		Status:      "1",
 	}
 	splits = append(splits, creditSplit)
 
@@ -329,15 +386,52 @@ func (s *BillService) GenerateBillSplits(
 			return nil, fmt.Errorf("account not found: %v", err)
 		}
 
+		amountStr := strconv.FormatFloat(line.Amount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse amount: %v", err)
+		}
+
 		splits = append(splits, store.Split{
-			AccountID: line.AccountID,
-			Debit:     &line.Amount,
-			Credit:    nil,
-			UnitID:    line.UnitID,
-			PeopleID:  line.PeopleID,
-			Status:    "1",
+			AccountID:   line.AccountID,
+			Debit:       &line.Amount,
+			DebitCents:  &amountCents,
+			Credit:      nil,
+			CreditCents: nil,
+			UnitID:      line.UnitID,
+			PeopleID:    line.PeopleID,
+			Status:      "1",
 		})
 	}
 
 	return splits, nil
+}
+
+func validateSplitsBalanced(splits []store.Split) error {
+	var debit, credit float64
+	var debitCents, creditCents int64
+	for _, s := range splits {
+		if s.Debit != nil {
+			debit += *s.Debit
+		}
+		if s.Credit != nil {
+			credit += *s.Credit
+		}
+		if s.DebitCents != nil {
+			debitCents += *s.DebitCents
+		}
+		if s.CreditCents != nil {
+			creditCents += *s.CreditCents
+		}
+	}
+
+	// if math.Abs(debit-credit) > 0.0001 {
+	// 	return fmt.Errorf("unbalanced entry: debit %.2f ≠ credit %.2f", debit, credit)
+	// }
+
+	if debitCents != creditCents {
+		return fmt.Errorf("unbalanced entry: debit cents %d ≠ credit cents %d", debitCents, creditCents)
+	}
+
+	return nil
 }
