@@ -1,6 +1,31 @@
 package dto
 
-import "github.com/mysecodgit/go_accounting/internal/store"
+import (
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
+	"github.com/mysecodgit/go_accounting/internal/store"
+)
+
+type JournalDto struct {
+	ID            int64      `json:"id"`
+	TransactionID int64      `json:"transaction_id"`
+	Reference     string     `json:"reference"`
+	JournalDate   string  `json:"journal_date"`
+	BuildingID    int64      `json:"building_id"`
+	Memo          *string    `json:"memo,omitempty"`
+	TotalAmount   string   `json:"total_amount,omitempty"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+type JournalLineDto struct {
+	ID          int64    `json:"id"`
+	JournalID   int64    `json:"journal_id"`
+	AccountID   int64    `json:"account_id"`
+	UnitID      *int64   `json:"unit_id,omitempty"`
+	PeopleID    *int64   `json:"people_id,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Debit       string  `json:"debit,omitempty"`
+	Credit      string  `json:"credit,omitempty"`
+}
 
 type JournalLineInput struct {
 	AccountID   int      `json:"account_id"`
@@ -30,10 +55,17 @@ type UpdateJournalRequest struct {
 }
 
 type JournalResponse struct {
-	Journal     store.Journal            `json:"journal"`
-	Lines       []store.JournalLine      `json:"lines"`
-	Splits      []store.Split               `json:"splits"`
+	Journal     JournalDto            `json:"journal"`
+	Lines       []JournalLineDto      `json:"lines"`
+	Splits      []SplitDto               `json:"splits"`
 	Transaction store.Transaction `json:"transaction"`
+}
+
+type JournalResponseDetails struct {
+	Journal      JournalDto       `json:"journal"`
+	Lines []*JournalLineDto `json:"lines"`
+	Transaction  store.Transaction   `json:"transaction"`
+	Splits  []SplitDto   `json:"splits"`
 }
 
 
@@ -58,4 +90,51 @@ type CreateInvoiceAppliedCreditRequest struct {
 	Amount       float64 `json:"amount"`
 	Description  string  `json:"description"`
 	Date         string  `json:"date"`
+}
+
+
+// map Journal to JournalDto
+func MapJournalToJournalDto(j store.Journal) *JournalDto {
+	return &JournalDto{
+		ID:            j.ID,
+		TransactionID: j.TransactionID,
+		Reference:     j.Reference,
+		JournalDate:   j.JournalDate,
+		BuildingID:    j.BuildingID,
+		Memo:          j.Memo,
+		TotalAmount:   money.FormatMoneyFromCents(j.AmountCents),
+		CreatedAt:     j.CreatedAt,
+	}
+}
+
+// map JournalLine to JournalLineDto
+func MapJournalLineToJournalLineDto(l store.JournalLine) *JournalLineDto {
+	return &JournalLineDto{
+		ID:            l.ID,
+		JournalID:     l.JournalID,
+		AccountID:     l.AccountID,
+		UnitID:        l.UnitID,
+		PeopleID:      l.PeopleID,
+		Description:   l.Description,
+		Debit:         money.FormatMoneyFromCents(l.DebitCents),
+		Credit:        money.FormatMoneyFromCents(l.CreditCents),
+	}
+}
+
+// map []journal to []JournalDto
+func MapJournalsToJournalDtos(journals []store.Journal) []*JournalDto {
+	var dto []*JournalDto
+	for _, j := range journals {
+		dto = append(dto, MapJournalToJournalDto(j))
+	}
+	return dto
+}
+
+// map []journal_line to []JournalLineDto
+func MapJournalLinesToJournalLineDtos(lines []store.JournalLine) []*JournalLineDto {
+	var dto []*JournalLineDto
+	for _, l := range lines {
+		dto = append(dto, MapJournalLineToJournalLineDto(l))
+	}
+	return dto
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
@@ -79,28 +81,32 @@ func NewJournalService(
 |---------------------------------------------------------------------------
 */
 
-type JournalResponseDetails struct {
-	Journal      store.Journal       `json:"journal"`
-	Lines []store.JournalLine `json:"lines"`
-	Transaction  store.Transaction   `json:"transaction"`
-	Splits  []store.Split   `json:"splits"`
+func (s *JournalService) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string) ([]*dto.JournalDto, error) {
+	journals, err := s.journalStore.GetAll(ctx, buildingID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("journals not found: %v", err)
+	}
+	return dto.MapJournalsToJournalDtos(journals), nil
 }
 
-
-func (s *JournalService) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string) ([]store.Journal, error) {
-	return s.journalStore.GetAll(ctx, buildingID, startDate, endDate)
-}
-
-func (s *JournalService) GetByID(ctx context.Context, id int64) (*JournalResponseDetails, error) {
+func (s *JournalService) GetByID(ctx context.Context, id int64) (*dto.JournalResponseDetails, error) {
 	journal, err := s.journalStore.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("journal not found: %v", err)
+	}
+
+	var journalDto dto.JournalDto
+
+	if journal != nil {
+		journalDto = *dto.MapJournalToJournalDto(*journal)
 	}
 
 	lines, err := s.journalLineStore.GetAllByJournalID(ctx, journal.ID)
 	if err != nil {
 		return nil, fmt.Errorf("journal lines not found: %v", err)
 	}
+
+	linesDto := dto.MapJournalLinesToJournalLineDtos(lines)
 
 	transaction, err := s.transactionStore.GetByID(ctx, journal.TransactionID)
 	if err != nil {
@@ -111,11 +117,13 @@ func (s *JournalService) GetByID(ctx context.Context, id int64) (*JournalRespons
 		return nil, fmt.Errorf("splits not found: %v", err)
 	}
 
-	return &JournalResponseDetails{
-		Journal:      *journal,
-		Lines: lines,
-		Transaction:  *transaction,
-		Splits: splits,
+	splitsDto := dto.MapSplitsToDto(splits)
+
+	return &dto.JournalResponseDetails{
+		Journal:     journalDto,
+		Lines:       linesDto,
+		Transaction: *transaction,
+		Splits:      splitsDto,
 	}, nil
 }
 
@@ -168,6 +176,12 @@ func (s *JournalService) Create(ctx context.Context, req dto.CreateJournalReques
 			}
 		}
 
+		amountStr := strconv.FormatFloat(req.TotalAmount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			fmt.Println("Error parsing amount", err)
+			return err
+		}
 		// 2. create journal
 		journal := &store.Journal{
 			TransactionID: *transactionID,
@@ -176,6 +190,7 @@ func (s *JournalService) Create(ctx context.Context, req dto.CreateJournalReques
 			BuildingID:    req.BuildingID,
 			Memo:          req.Memo,
 			TotalAmount:   &req.TotalAmount,
+			AmountCents:   amountCents,
 		}
 
 		createdJournal, err := s.journalStore.Create(ctx, tx, journal)
@@ -184,24 +199,33 @@ func (s *JournalService) Create(ctx context.Context, req dto.CreateJournalReques
 			return err
 		}
 
-		
-	
-
 		// 3. create journal lines
 		for _, line := range req.Lines {
 			var debit float64 = 0.0
 			var credit float64 = 0.0
 			if line.Debit != nil {
 				debit = *line.Debit
-			}else{
+			} else {
 				debit = 0.0
 			}
 			if line.Credit != nil {
 				credit = *line.Credit
-			}else{
+			} else {
 				credit = 0.0
 			}
 
+			debitStr := strconv.FormatFloat(debit, 'f', -1, 64)
+			debitCents, err := money.ParseUSDAmount(debitStr)
+			if err != nil {
+				fmt.Println("Error parsing debit", err)
+				return err
+			}
+			creditStr := strconv.FormatFloat(credit, 'f', -1, 64)
+			creditCents, err := money.ParseUSDAmount(creditStr)
+			if err != nil {
+				fmt.Println("Error parsing credit", err)
+				return err
+			}
 
 			journalLine := &store.JournalLine{
 				JournalID:   createdJournal.ID,
@@ -210,7 +234,9 @@ func (s *JournalService) Create(ctx context.Context, req dto.CreateJournalReques
 				PeopleID:    line.PeopleID,
 				Description: line.Description,
 				Debit:       debit,
-				Credit:     credit,
+				Credit:      credit,
+				DebitCents:  debitCents,
+				CreditCents: creditCents,
 			}
 			if _, err := s.journalLineStore.Create(ctx, tx, journalLine); err != nil {
 				fmt.Println("Error creating journal lines", err)
@@ -239,6 +265,12 @@ func (s *JournalService) Update(ctx context.Context, req dto.UpdateJournalReques
 		}
 
 		// update journal
+		amountStr := strconv.FormatFloat(req.TotalAmount, 'f', -1, 64)
+		amountCents, err := money.ParseUSDAmount(amountStr)
+		if err != nil {
+			fmt.Println("Error parsing amount", err)
+			return err
+		}
 		updatedJournal := &store.Journal{
 			ID:            journalID,
 			TransactionID: existingJournal.TransactionID,
@@ -247,6 +279,7 @@ func (s *JournalService) Update(ctx context.Context, req dto.UpdateJournalReques
 			BuildingID:    req.BuildingID,
 			Memo:          req.Memo,
 			TotalAmount:   &req.TotalAmount,
+			AmountCents:   amountCents,
 		}
 
 		if _, err := s.journalStore.Update(ctx, tx, updatedJournal); err != nil {
@@ -260,13 +293,25 @@ func (s *JournalService) Update(ctx context.Context, req dto.UpdateJournalReques
 			var credit float64 = 0.0
 			if line.Debit != nil {
 				debit = *line.Debit
-			}else{
+			} else {
 				debit = 0.0
 			}
 			if line.Credit != nil {
 				credit = *line.Credit
-			}else{
+			} else {
 				credit = 0.0
+			}
+			debitStr := strconv.FormatFloat(debit, 'f', -1, 64)
+			debitCents, err := money.ParseUSDAmount(debitStr)
+			if err != nil {
+				fmt.Println("Error parsing debit", err)
+				return err
+			}
+			creditStr := strconv.FormatFloat(credit, 'f', -1, 64)
+			creditCents, err := money.ParseUSDAmount(creditStr)
+			if err != nil {
+				fmt.Println("Error parsing credit", err)
+				return err
 			}
 
 			journalLine := &store.JournalLine{
@@ -277,6 +322,8 @@ func (s *JournalService) Update(ctx context.Context, req dto.UpdateJournalReques
 				Description: line.Description,
 				Debit:       debit,
 				Credit:      credit,
+				DebitCents:  debitCents,
+				CreditCents: creditCents,
 			}
 			if _, err := s.journalLineStore.Create(ctx, tx, journalLine); err != nil {
 				fmt.Println("Error creating journal lines", err)
@@ -286,10 +333,10 @@ func (s *JournalService) Update(ctx context.Context, req dto.UpdateJournalReques
 
 		// set old splits to 0 status
 
-		 if err := s.splitStore.DeleteByTransactionID(ctx, tx, existingJournal.TransactionID); err != nil {
+		if err := s.splitStore.DeleteByTransactionID(ctx, tx, existingJournal.TransactionID); err != nil {
 			fmt.Println("Error deleting splits", err)
 			return err
-		 }
+		}
 
 		// update transaction
 		transaction := &store.Transaction{
@@ -339,7 +386,6 @@ func (s *JournalService) GenerateJournalSplits(
 	req dto.JournalPayloadDTO,
 ) ([]store.Split, error) {
 
-
 	amount := req.TotalAmount
 	if amount <= 0 {
 		return nil, fmt.Errorf("amount must be greater than zero")
@@ -353,13 +399,37 @@ func (s *JournalService) GenerateJournalSplits(
 			return nil, fmt.Errorf("account not found: %v", err)
 		}
 
+		var debitStr string
+		if line.Debit != nil {
+			debitStr = strconv.FormatFloat(*line.Debit, 'f', -1, 64)
+		} else {
+			debitStr = "0.0"
+		}
+		debitCents, err := money.ParseUSDAmount(debitStr)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing amount: %v", err)
+		}
+
+		var creditStr string
+		if line.Credit != nil {
+			creditStr = strconv.FormatFloat(*line.Credit, 'f', -1, 64)
+		} else {
+			creditStr = "0.0"
+		}
+		creditCents, err := money.ParseUSDAmount(creditStr)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing amount: %v", err)
+		}
+
 		splits = append(splits, store.Split{
-			AccountID: int64(line.AccountID),
-			Credit:    line.Credit,
-			Debit:     line.Debit,
-			UnitID:    line.UnitID,
-			PeopleID:  line.PeopleID,
-			Status:    "1",
+			AccountID:   int64(line.AccountID),
+			Credit:      line.Credit,
+			Debit:       line.Debit,
+			DebitCents:  &debitCents,
+			CreditCents: &creditCents,
+			UnitID:      line.UnitID,
+			PeopleID:    line.PeopleID,
+			Status:      "1",
 		})
 
 	}
@@ -368,18 +438,18 @@ func (s *JournalService) GenerateJournalSplits(
 }
 
 func (s *JournalService) ValidateBalanced(splits []store.Split) error {
-	var totalDebit float64 = 0.0
-	var totalCredit float64 = 0.0
+	var totalDebitCents int64 = 0.0
+	var totalCreditCents int64 = 0.0
 	for _, split := range splits {
 		if split.Debit != nil {
-			totalDebit += *split.Debit
+			totalDebitCents += *split.DebitCents
 		}
 		if split.Credit != nil {
-			totalCredit += *split.Credit
+			totalCreditCents += *split.CreditCents
 		}
 	}
-	if totalDebit != totalCredit {
-		return fmt.Errorf("splits are not balanced")
+	if totalDebitCents != totalCreditCents {
+		return fmt.Errorf("splits are not balanced: %d != %d", money.FormatMoneyFromCents(totalDebitCents), money.FormatMoneyFromCents(totalCreditCents))
 	}
 	return nil
 }

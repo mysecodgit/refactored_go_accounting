@@ -6,14 +6,15 @@ import (
 )
 
 type Journal struct {
-	ID            int64      `json:"id"`
-	TransactionID int64      `json:"transaction_id"`
-	Reference     string     `json:"reference"`
-	JournalDate   string  `json:"journal_date"`
-	BuildingID    int64      `json:"building_id"`
-	Memo          *string    `json:"memo,omitempty"`
-	TotalAmount   *float64   `json:"total_amount,omitempty"`
-	CreatedAt     string  `json:"created_at"`
+	ID            int64    `json:"id"`
+	TransactionID int64    `json:"transaction_id"`
+	Reference     string   `json:"reference"`
+	JournalDate   string   `json:"journal_date"`
+	BuildingID    int64    `json:"building_id"`
+	Memo          *string  `json:"memo,omitempty"`
+	TotalAmount   *float64 `json:"total_amount,omitempty"`
+	AmountCents   int64    `json:"amount_cents"`
+	CreatedAt     string   `json:"created_at"`
 }
 
 type JournalStore struct {
@@ -25,12 +26,11 @@ func NewJournalStore(db *sql.DB) *JournalStore {
 }
 
 func (s *JournalStore) GetAll(ctx context.Context, buildingID int64, startDate, endDate *string) ([]Journal, error) {
-	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at
+	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, amount_cents, created_at
 			  FROM journal
 			  WHERE building_id = ?`
 
-
-			  args := []interface{}{buildingID}
+	args := []interface{}{buildingID}
 
 	if startDate != nil && *startDate != "" {
 		query += " AND journal_date >= ?"
@@ -63,6 +63,7 @@ func (s *JournalStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 			&j.BuildingID,
 			&j.Memo,
 			&j.TotalAmount,
+			&j.AmountCents,
 			&j.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -74,7 +75,7 @@ func (s *JournalStore) GetAll(ctx context.Context, buildingID int64, startDate, 
 }
 
 func (s *JournalStore) GetByID(ctx context.Context, id int64) (*Journal, error) {
-	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at
+	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, amount_cents, created_at
 			  FROM journal
 			  WHERE id = ?`
 
@@ -90,6 +91,7 @@ func (s *JournalStore) GetByID(ctx context.Context, id int64) (*Journal, error) 
 		&j.BuildingID,
 		&j.Memo,
 		&j.TotalAmount,
+		&j.AmountCents,
 		&j.CreatedAt,
 	)
 	if err != nil {
@@ -103,7 +105,7 @@ func (s *JournalStore) GetByID(ctx context.Context, id int64) (*Journal, error) 
 }
 
 func (s *JournalStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*Journal, error) {
-	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at
+	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, amount_cents, created_at
 			  FROM journal
 			  WHERE id = ?`
 
@@ -116,6 +118,7 @@ func (s *JournalStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*Jo
 		&j.BuildingID,
 		&j.Memo,
 		&j.TotalAmount,
+		&j.AmountCents,
 		&j.CreatedAt,
 	)
 	if err != nil {
@@ -128,7 +131,7 @@ func (s *JournalStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*Jo
 }
 
 func (s *JournalStore) GetByTransactionID(ctx context.Context, tx *sql.Tx, transactionID int64) (*Journal, error) {
-	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at
+	query := `SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, amount_cents, created_at
 			  FROM journal
 			  WHERE transaction_id = ?`
 
@@ -144,6 +147,7 @@ func (s *JournalStore) GetByTransactionID(ctx context.Context, tx *sql.Tx, trans
 		&j.BuildingID,
 		&j.Memo,
 		&j.TotalAmount,
+		&j.AmountCents,
 		&j.CreatedAt,
 	)
 	if err != nil {
@@ -158,8 +162,8 @@ func (s *JournalStore) GetByTransactionID(ctx context.Context, tx *sql.Tx, trans
 
 func (s *JournalStore) Create(ctx context.Context, tx *sql.Tx, j *Journal) (*Journal, error) {
 	query := `INSERT INTO journal
-			  (transaction_id, reference, journal_date, building_id, memo, total_amount)
-			  VALUES (?, ?, ?, ?, ?, ?)`
+			  (transaction_id, reference, journal_date, building_id, memo, total_amount, amount_cents)
+			  VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -171,6 +175,7 @@ func (s *JournalStore) Create(ctx context.Context, tx *sql.Tx, j *Journal) (*Jou
 		j.BuildingID,
 		j.Memo,
 		j.TotalAmount,
+		j.AmountCents,
 	)
 	if err != nil {
 		return nil, err
@@ -191,7 +196,7 @@ func (s *JournalStore) Create(ctx context.Context, tx *sql.Tx, j *Journal) (*Jou
 
 func (s *JournalStore) Update(ctx context.Context, tx *sql.Tx, j *Journal) (*Journal, error) {
 	query := `UPDATE journal
-			  SET transaction_id = ?, reference = ?, journal_date = ?, building_id = ?, memo = ?, total_amount = ?
+			  SET transaction_id = ?, reference = ?, journal_date = ?, building_id = ?, memo = ?, total_amount = ?, amount_cents = ?
 			  WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -204,13 +209,12 @@ func (s *JournalStore) Update(ctx context.Context, tx *sql.Tx, j *Journal) (*Jou
 		j.BuildingID,
 		j.Memo,
 		j.TotalAmount,
+		j.AmountCents,
 		j.ID,
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	
 
 	updated, err := s.GetByIDTx(ctx, tx, j.ID)
 	if err != nil {

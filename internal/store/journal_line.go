@@ -14,6 +14,8 @@ type JournalLine struct {
 	Description *string  `json:"description,omitempty"`
 	Debit       float64  `json:"debit,omitempty"`
 	Credit      float64  `json:"credit,omitempty"`
+	DebitCents  int64    `json:"debit_cents,omitempty"`
+	CreditCents int64    `json:"credit_cents,omitempty"`
 }
 
 type JournalLineStore struct {
@@ -25,7 +27,7 @@ func NewJournalLineStore(db *sql.DB) *JournalLineStore {
 }
 
 func (s *JournalLineStore) GetAllByJournalID(ctx context.Context, journalID int64) ([]JournalLine, error) {
-	query := `SELECT id, journal_id, account_id, unit_id, people_id, description, debit, credit
+	query := `SELECT id, journal_id, account_id, unit_id, people_id, description, debit, credit, debit_cents, credit_cents
 			  FROM journal_lines
 			  WHERE journal_id = ?
 			  ORDER BY id ASC`
@@ -51,6 +53,8 @@ func (s *JournalLineStore) GetAllByJournalID(ctx context.Context, journalID int6
 			&l.Description,
 			&l.Debit,
 			&l.Credit,
+			&l.DebitCents,
+			&l.CreditCents,
 		); err != nil {
 			return nil, err
 		}
@@ -61,7 +65,7 @@ func (s *JournalLineStore) GetAllByJournalID(ctx context.Context, journalID int6
 }
 
 func (s *JournalLineStore) GetByID(ctx context.Context, id int64) (*JournalLine, error) {
-	query := `SELECT id, journal_id, account_id, unit_id, people_id, description, debit, credit
+	query := `SELECT id, journal_id, account_id, unit_id, people_id, description, debit, credit, debit_cents, credit_cents
 			  FROM journal_lines
 			  WHERE id = ?`
 
@@ -78,6 +82,8 @@ func (s *JournalLineStore) GetByID(ctx context.Context, id int64) (*JournalLine,
 		&l.Description,
 		&l.Debit,
 		&l.Credit,
+		&l.DebitCents,
+		&l.CreditCents,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -90,7 +96,7 @@ func (s *JournalLineStore) GetByID(ctx context.Context, id int64) (*JournalLine,
 }
 
 func (s *JournalLineStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*JournalLine, error) {
-	query := `SELECT id, journal_id, account_id, unit_id, people_id, description, debit, credit
+	query := `SELECT id, journal_id, account_id, unit_id, people_id, description, debit, credit, debit_cents, credit_cents
 			  FROM journal_lines
 			  WHERE id = ?`
 
@@ -104,6 +110,8 @@ func (s *JournalLineStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) 
 		&l.Description,
 		&l.Debit,
 		&l.Credit,
+		&l.DebitCents,
+		&l.CreditCents,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -116,8 +124,8 @@ func (s *JournalLineStore) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) 
 
 func (s *JournalLineStore) Create(ctx context.Context, tx *sql.Tx, l *JournalLine) (*JournalLine, error) {
 	query := `INSERT INTO journal_lines
-			  (journal_id, account_id, unit_id, people_id, description, debit, credit)
-			  VALUES (?, ?, ?, ?, ?, ?, ?)`
+			  (journal_id, account_id, unit_id, people_id, description, debit, credit, debit_cents, credit_cents)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
 	defer cancel()
@@ -130,6 +138,8 @@ func (s *JournalLineStore) Create(ctx context.Context, tx *sql.Tx, l *JournalLin
 		l.Description,
 		l.Debit,
 		l.Credit,
+		l.DebitCents,
+		l.CreditCents,
 	)
 	if err != nil {
 		return nil, err
@@ -150,7 +160,7 @@ func (s *JournalLineStore) Create(ctx context.Context, tx *sql.Tx, l *JournalLin
 
 func (s *JournalLineStore) Update(ctx context.Context, tx *sql.Tx, l *JournalLine) (*JournalLine, error) {
 	query := `UPDATE journal_lines
-			  SET journal_id = ?, account_id = ?, unit_id = ?, people_id = ?, description = ?, debit = ?, credit = ?
+			  SET journal_id = ?, account_id = ?, unit_id = ?, people_id = ?, description = ?, debit = ?, credit = ?, debit_cents = ?, credit_cents = ?
 			  WHERE id = ?`
 
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeOutDuration)
@@ -164,6 +174,8 @@ func (s *JournalLineStore) Update(ctx context.Context, tx *sql.Tx, l *JournalLin
 		l.Description,
 		l.Debit,
 		l.Credit,
+		l.DebitCents,
+		l.CreditCents,
 		l.ID,
 	)
 	if err != nil {
