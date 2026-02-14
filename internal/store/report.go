@@ -101,8 +101,8 @@ type TrialBalanceAccount struct {
 	AccountName       string  `json:"account_name"`
 	AccountType       string  `json:"account_type"`
 	AccountTypeStatus string  `json:"account_type_status"`
-	DebitBalance      float64 `json:"debit_balance"`          // Debit balance (0 if credit account)
-	CreditBalance     float64 `json:"credit_balance"`         // Credit balance (0 if debit account)
+	DebitBalance      int64 `json:"debit_balance"`          // Debit balance (0 if credit account)
+	CreditBalance     int64 `json:"credit_balance"`         // Credit balance (0 if debit account)
 	IsTotalRow        bool    `json:"is_total_row,omitempty"` // Flag to indicate this is a total row
 }
 
@@ -116,18 +116,18 @@ func (s *ReportStore) GetTrialBalance(ctx context.Context, buildingID int, asOfD
 	at.typeName,
     -- Populate total_debit and total_credit based on balance
     CASE 
-        WHEN LOWER(at.typeStatus) = 'debit' AND (COALESCE(SUM(s.debit),0) - COALESCE(SUM(s.credit),0)) >= 0 THEN
-            COALESCE(SUM(s.debit),0) - COALESCE(SUM(s.credit),0)
-        WHEN LOWER(at.typeStatus) = 'credit' AND (COALESCE(SUM(s.credit),0) - COALESCE(SUM(s.debit),0)) < 0 THEN
-            -(COALESCE(SUM(s.credit),0) - COALESCE(SUM(s.debit),0))
+        WHEN LOWER(at.typeStatus) = 'debit' AND (COALESCE(SUM(s.debit_cents),0) - COALESCE(SUM(s.credit_cents),0)) >= 0 THEN
+            COALESCE(SUM(s.debit_cents),0) - COALESCE(SUM(s.credit_cents),0)
+        WHEN LOWER(at.typeStatus) = 'credit' AND (COALESCE(SUM(s.credit_cents),0) - COALESCE(SUM(s.debit_cents),0)) < 0 THEN
+            -(COALESCE(SUM(s.credit_cents),0) - COALESCE(SUM(s.debit_cents),0))
         ELSE 0
     END AS total_debit,
 
     CASE 
-        WHEN LOWER(at.typeStatus) = 'credit' AND (COALESCE(SUM(s.credit),0) - COALESCE(SUM(s.debit),0)) >= 0 THEN
-            COALESCE(SUM(s.credit),0) - COALESCE(SUM(s.debit),0)
-        WHEN LOWER(at.typeStatus) = 'debit' AND (COALESCE(SUM(s.debit),0) - COALESCE(SUM(s.credit),0)) < 0 THEN
-            -(COALESCE(SUM(s.debit),0) - COALESCE(SUM(s.credit),0))
+        WHEN LOWER(at.typeStatus) = 'credit' AND (COALESCE(SUM(s.credit_cents),0) - COALESCE(SUM(s.debit_cents),0)) >= 0 THEN
+            COALESCE(SUM(s.credit_cents),0) - COALESCE(SUM(s.debit_cents),0)
+        WHEN LOWER(at.typeStatus) = 'debit' AND (COALESCE(SUM(s.debit_cents),0) - COALESCE(SUM(s.credit_cents),0)) < 0 THEN
+            -(COALESCE(SUM(s.debit_cents),0) - COALESCE(SUM(s.credit_cents),0))
         ELSE 0
     END AS total_credit
 

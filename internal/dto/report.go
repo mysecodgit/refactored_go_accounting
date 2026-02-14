@@ -48,8 +48,8 @@ type TrialBalanceAccount struct {
 	AccountNumber int     `json:"account_number"`
 	AccountName   string  `json:"account_name"`
 	AccountType   string  `json:"account_type"`
-	DebitBalance  float64 `json:"debit_balance"`          // Debit balance (0 if credit account)
-	CreditBalance float64 `json:"credit_balance"`         // Credit balance (0 if debit account)
+	DebitBalance  string `json:"debit_balance"`          // Debit balance (0 if credit account)
+	CreditBalance string `json:"credit_balance"`         // Credit balance (0 if debit account)
 	IsTotalRow    bool    `json:"is_total_row,omitempty"` // Flag to indicate this is a total row
 }
 
@@ -57,8 +57,8 @@ type TrialBalanceResponse struct {
 	BuildingID  int                   `json:"building_id"`
 	AsOfDate    string                `json:"as_of_date"`
 	Accounts    []TrialBalanceAccount `json:"accounts"`
-	TotalDebit  float64               `json:"total_debit"`
-	TotalCredit float64               `json:"total_credit"`
+	TotalDebit  string               `json:"total_debit"`
+	TotalCredit string               `json:"total_credit"`
 	IsBalanced  bool                  `json:"is_balanced"`
 }
 

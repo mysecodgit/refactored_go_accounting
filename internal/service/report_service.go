@@ -72,7 +72,7 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 			AccountNumber: account.AccountNumber,
 			AccountName:   account.AccountName,
 			AccountType:   account.AccountType,
-			Balance:       balance,  // readable format
+			Balance:       balance, // readable format
 			BalanceCents:  account.Balance,
 		}
 
@@ -160,8 +160,8 @@ func (s *ReportService) GetTrialBalance(ctx context.Context, buildingID int, asO
 	}
 	fmt.Println("***************************** trialBalanceAccounts", accounts)
 	trialBalanceAccounts := []dto.TrialBalanceAccount{}
-	totalDebit := 0.0
-	totalCredit := 0.0
+	totalDebit := int64(0)
+	totalCredit := int64(0)
 
 	for _, account := range accounts {
 
@@ -172,17 +172,17 @@ func (s *ReportService) GetTrialBalance(ctx context.Context, buildingID int, asO
 				AccountNumber: account.AccountNumber,
 				AccountName:   account.AccountName,
 				AccountType:   account.AccountType,
-				DebitBalance:  account.DebitBalance,
-				CreditBalance: account.CreditBalance,
+				DebitBalance:  money.FormatMoneyFromCents(account.DebitBalance),
+				CreditBalance: money.FormatMoneyFromCents(account.CreditBalance),
 			})
 
-			totalDebit += account.DebitBalance
-			totalCredit += account.CreditBalance
+			totalDebit += account.DebitBalance   // these are cents balance from store
+			totalCredit += account.CreditBalance // these are cents balance from store
 		}
 	}
 
 	// Check if balanced (allowing for small rounding differences)
-	isBalanced := (totalDebit-totalCredit) < 0.01 && (totalDebit-totalCredit) > -0.01
+	isBalanced := totalDebit == totalCredit
 
 	// Add total row
 	trialBalanceAccounts = append(trialBalanceAccounts, dto.TrialBalanceAccount{
@@ -190,8 +190,8 @@ func (s *ReportService) GetTrialBalance(ctx context.Context, buildingID int, asO
 		AccountNumber: 0,
 		AccountName:   "TOTAL",
 		AccountType:   "",
-		DebitBalance:  totalDebit,
-		CreditBalance: totalCredit,
+		DebitBalance:  money.FormatMoneyFromCents(totalDebit),
+		CreditBalance: money.FormatMoneyFromCents(totalCredit),
 		IsTotalRow:    true,
 	})
 
@@ -199,8 +199,8 @@ func (s *ReportService) GetTrialBalance(ctx context.Context, buildingID int, asO
 		BuildingID:  buildingID,
 		AsOfDate:    asOfDate,
 		Accounts:    trialBalanceAccounts,
-		TotalDebit:  totalDebit,
-		TotalCredit: totalCredit,
+		TotalDebit:  money.FormatMoneyFromCents(totalDebit),
+		TotalCredit: money.FormatMoneyFromCents(totalCredit),
 		IsBalanced:  isBalanced,
 	}, nil
 }
