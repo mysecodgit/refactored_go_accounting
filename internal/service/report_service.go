@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	money "github.com/mysecodgit/go_accounting/internal/accounting"
 	"github.com/mysecodgit/go_accounting/internal/dto"
 	"github.com/mysecodgit/go_accounting/internal/store"
 )
@@ -59,10 +60,10 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 
 	for _, account := range accountBalances {
 		accountType := account.AccountType
-		balance := account.Balance
+		balance := money.FormatMoneyFromCents(account.Balance)
 
 		// Skip accounts with 0 balance
-		if balance == 0 {
+		if balance == "0" || balance == "0.0" || balance == "0.00" {
 			continue
 		}
 
@@ -71,7 +72,8 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 			AccountNumber: account.AccountNumber,
 			AccountName:   account.AccountName,
 			AccountType:   account.AccountType,
-			Balance:       balance,
+			Balance:       balance,  // readable format
+			BalanceCents:  account.Balance,
 		}
 
 		// Categorize based on account type field (Asset, Liability, Equity, Income, Expense)
@@ -91,14 +93,14 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 	}
 
 	// Calculate Net Income = Total Income - Total Expenses
-	totalIncome := 0.0
+	totalIncome := int64(0)
 	for _, income := range incomeAccounts {
-		totalIncome += income.Balance
+		totalIncome += income.BalanceCents
 	}
 
-	totalExpenses := 0.0
+	totalExpenses := int64(0)
 	for _, expense := range expenseAccounts {
-		totalExpenses += expense.Balance
+		totalExpenses += expense.BalanceCents
 	}
 
 	netIncome := totalIncome - totalExpenses
@@ -110,45 +112,28 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 			AccountNumber: "",
 			AccountName:   "Net Income",
 			AccountType:   "Net Income",
-			Balance:       netIncome,
+			Balance:       money.FormatMoneyFromCents(netIncome),
+			BalanceCents:  netIncome,
 		})
 	}
 
 	// Calculate totals
-	totalAssets := 0.0
+	totalAssets := int64(0)
 	for _, asset := range assets {
-		totalAssets += asset.Balance
+		totalAssets += asset.BalanceCents
 	}
 
-	totalLiabilities := 0.0
+	totalLiabilities := int64(0)
 	for _, liability := range liabilities {
-		totalLiabilities += liability.Balance
+		totalLiabilities += liability.BalanceCents
 	}
 
-	totalEquity := 0.0
+	totalEquity := int64(0)
 	for _, eq := range equity {
-		totalEquity += eq.Balance
+		totalEquity += eq.BalanceCents
 	}
 
 	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
-
-	// Round to 2 decimals for presentation + stable comparisons (avoid floating point artifacts)
-	round2 := func(v float64) float64 {
-		return math.Round(v*100) / 100
-	}
-	for i := range assets {
-		assets[i].Balance = round2(assets[i].Balance)
-	}
-	for i := range liabilities {
-		liabilities[i].Balance = round2(liabilities[i].Balance)
-	}
-	for i := range equity {
-		equity[i].Balance = round2(equity[i].Balance)
-	}
-	totalAssets = round2(totalAssets)
-	totalLiabilities = round2(totalLiabilities)
-	totalEquity = round2(totalEquity)
-	totalLiabilitiesAndEquity = round2(totalLiabilitiesAndEquity)
 
 	// Consider balanced if equal at 2-decimal precision
 	isBalanced := totalAssets == totalLiabilitiesAndEquity
@@ -156,11 +141,11 @@ func (s *ReportService) GetBalanceSheet(ctx context.Context, buildingID int, asO
 	return &dto.BalanceSheetResponse{
 		BuildingID:                buildingID,
 		AsOfDate:                  asOfDate,
-		Assets:                    dto.BalanceSheetSection{SectionName: "Assets", Accounts: assets, Total: totalAssets},
-		Liabilities:               dto.BalanceSheetSection{SectionName: "Liabilities", Accounts: liabilities, Total: totalLiabilities},
-		Equity:                    dto.BalanceSheetSection{SectionName: "Equity", Accounts: equity, Total: totalEquity},
-		TotalAssets:               totalAssets,
-		TotalLiabilitiesAndEquity: totalLiabilitiesAndEquity,
+		Assets:                    dto.BalanceSheetSection{SectionName: "Assets", Accounts: assets, Total: money.FormatMoneyFromCents(totalAssets)},
+		Liabilities:               dto.BalanceSheetSection{SectionName: "Liabilities", Accounts: liabilities, Total: money.FormatMoneyFromCents(totalLiabilities)},
+		Equity:                    dto.BalanceSheetSection{SectionName: "Equity", Accounts: equity, Total: money.FormatMoneyFromCents(totalEquity)},
+		TotalAssets:               money.FormatMoneyFromCents(totalAssets),
+		TotalLiabilitiesAndEquity: money.FormatMoneyFromCents(totalLiabilitiesAndEquity),
 		IsBalanced:                isBalanced,
 	}, nil
 

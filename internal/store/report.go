@@ -20,9 +20,9 @@ type AccountBalance struct {
 	AccountName       string  `json:"account_name"`
 	AccountType       string  `json:"account_type"`
 	AccountTypeStatus string  `json:"account_type_status"`
-	Debit             float64 `json:"debit"`
-	Credit            float64 `json:"credit"`
-	Balance           float64 `json:"balance"`
+	Debit             int64 `json:"debit"`
+	Credit            int64 `json:"credit"`
+	Balance           int64 `json:"balance"`
 }
 
 func (s *ReportStore) GetBalanceSheet(ctx context.Context, buildingID int, asOfDate string) ([]AccountBalance, error) {
@@ -33,13 +33,13 @@ func (s *ReportStore) GetBalanceSheet(ctx context.Context, buildingID int, asOfD
     a.account_name,
     at.type,
     at.typeStatus,
-    COALESCE(SUM(s.debit), 0)  AS total_debit,
-    COALESCE(SUM(s.credit), 0) AS total_credit,
+    COALESCE(SUM(s.debit_cents), 0)  AS total_debit,
+    COALESCE(SUM(s.credit_cents), 0) AS total_credit,
     CASE
         WHEN LOWER(at.typeStatus) = 'debit'
-            THEN COALESCE(SUM(s.debit), 0) - COALESCE(SUM(s.credit), 0)
+            THEN COALESCE(SUM(s.debit_cents), 0) - COALESCE(SUM(s.credit_cents), 0)
         ELSE
-            COALESCE(SUM(s.credit), 0) - COALESCE(SUM(s.debit), 0)
+            COALESCE(SUM(s.credit_cents), 0) - COALESCE(SUM(s.debit_cents), 0)
     END AS balance
 FROM accounts a
 JOIN account_types at ON a.account_type = at.id
