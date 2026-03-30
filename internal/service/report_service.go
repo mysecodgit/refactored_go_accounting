@@ -713,18 +713,24 @@ func (s *ReportService) GetTransactionDetails(ctx context.Context, buildingID in
 
 		// calculate runningbalance
 		if transactionDetail.Debit != nil {
-			if transactionDetail.Type == "debit" {
-				runningBalances[accountID] += *transactionDetail.Debit
-			} else {
-				runningBalances[accountID] -= *transactionDetail.Debit
-			}
+			// TODO : not necessary anymore remove it
+			// if transactionDetail.Type == "debit" {
+			// 	runningBalances[accountID] += *transactionDetail.Debit
+			// } else {
+			// 	runningBalances[accountID] -= *transactionDetail.Debit
+			// }
+
+			runningBalances[accountID] += *transactionDetail.Debit
 		}
 		if transactionDetail.Credit != nil {
-			if transactionDetail.Type == "debit" {
-				runningBalances[accountID] -= *transactionDetail.Credit
-			} else {
-				runningBalances[accountID] += *transactionDetail.Credit
-			}
+			// TODO : not necessary anymore remove it
+			// if transactionDetail.Type == "debit" {
+			// 	runningBalances[accountID] -= *transactionDetail.Credit
+			// } else {
+			// 	runningBalances[accountID] += *transactionDetail.Credit
+			// }
+
+			runningBalances[accountID] -= *transactionDetail.Credit
 		}
 
 		balance := runningBalances[accountID]
@@ -848,13 +854,6 @@ func BuildLedgerResponse(
 		// balance += account.Splits[len(account.Splits)-1].Balance
 		// }
 
-		fmt.Println("=============                   ===============")
-		fmt.Println("=============================================")
-		fmt.Println("r.TransactionNumber", r.TransactionNumber)
-		fmt.Println("r.TransactionDate", r.TransactionDate)
-		fmt.Println("r.TransactionType", r.Type)
-		fmt.Println("===============                ===============")
-		fmt.Println("=============================================")
 		// ---- Split ----
 		account.Splits = append(account.Splits, Split{
 			TransactionNumber: r.TransactionNumber,
@@ -875,16 +874,17 @@ func BuildLedgerResponse(
 		account.TotalDebit = money.FormatMoneyFromCents(account.TotalDebitCents)
 		account.TotalCredit = money.FormatMoneyFromCents(account.TotalCreditCents)
 
+		// TODO : not necessary anymore remove it
 		// balance based on account type
-		var balanceCents int64
+		// var balanceCents int64
 
-		if account.TypeStatus == "debit" {
-			balanceCents = account.TotalDebitCents - account.TotalCreditCents
-		} else {
-			balanceCents = account.TotalCreditCents - account.TotalDebitCents
-		}
+		// if account.TypeStatus == "debit" {
+		// 	balanceCents = account.TotalDebitCents - account.TotalCreditCents
+		// } else {
+		// 	balanceCents = account.TotalCreditCents - account.TotalDebitCents
+		// }
 
-		account.TotalBalance = money.FormatMoneyFromCents(balanceCents)
+		account.TotalBalance = money.FormatMoneyFromCents(account.TotalDebitCents - account.TotalCreditCents)
 
 		grandDebitCents += debit
 		grandCreditCents += credit
