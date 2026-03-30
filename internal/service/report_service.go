@@ -302,13 +302,13 @@ func (s *ReportService) GetVendorBalanceSummary(ctx context.Context, buildingID 
 	}
 
 	// Calculate total balance
-	totalBalance := 0.0
+	totalBalance := int64(0)
 	vendorsList := []dto.VendorBalance{}
 	for _, vendor := range vendors {
 		vendorsList = append(vendorsList, dto.VendorBalance{
 			PeopleID:   vendor.PeopleID,
 			PeopleName: vendor.PeopleName,
-			Balance:    vendor.Balance,
+			Balance:    money.FormatMoneyFromCents(vendor.Balance),
 		})
 		totalBalance += vendor.Balance
 	}
@@ -317,7 +317,7 @@ func (s *ReportService) GetVendorBalanceSummary(ctx context.Context, buildingID 
 		BuildingID:   buildingID,
 		AsOfDate:     asOfDate,
 		Vendors:      vendorsList,
-		TotalBalance: totalBalance,
+		TotalBalance: money.FormatMoneyFromCents(totalBalance),
 	}, nil
 }
 
@@ -328,6 +328,8 @@ func (s *ReportService) GetVendorBalanceDetail(ctx context.Context, buildingID i
 	}
 
 	vendorBalanceDetailsList := []VendorBalanceDetail{}
+	runningBalances := make(map[int]int64)
+
 	for _, vendorBalanceDetail := range vendorBalanceDetails {
 		vendorDebit := ""
 		vendorCredit := ""
@@ -339,13 +341,17 @@ func (s *ReportService) GetVendorBalanceDetail(ctx context.Context, buildingID i
 		}
 
 		// calculate balance
-		balance := int64(0)
+		peopleID := vendorBalanceDetail.PeopleID
+
+		// calculate runningbalance
 		if vendorBalanceDetail.Debit != nil {
-			balance += *vendorBalanceDetail.Debit
+			runningBalances[peopleID] -= *vendorBalanceDetail.Debit
 		}
 		if vendorBalanceDetail.Credit != nil {
-			balance -= *vendorBalanceDetail.Credit
+			runningBalances[peopleID] += *vendorBalanceDetail.Credit
 		}
+
+		balance := runningBalances[peopleID]
 		balanceString := money.FormatMoneyFromCents(balance)
 
 		vendorBalanceDetailsList = append(vendorBalanceDetailsList, VendorBalanceDetail{
@@ -558,13 +564,15 @@ func GroupTransactionsWithGrandTotals(rows []CustomerBalanceDetail) CustomersRes
 }
 
 type Vendor struct {
-	PeopleID     int        `json:"people_id"`
-	PeopleName   string     `json:"people_name"`
-	Accounts     []*Account `json:"accounts"`
-	TotalDebit   string     `json:"total_debit"`
-	TotalCredit  string     `json:"total_credit"`
-	TotalBalance string     `json:"total_balance"`
-	IsHeader     bool       `json:"is_header"`
+	PeopleID         int        `json:"people_id"`
+	PeopleName       string     `json:"people_name"`
+	Accounts         []*Account `json:"accounts"`
+	TotalDebitCents  int64      `json:"-"`
+	TotalCreditCents int64      `json:"-"`
+	TotalDebit       string     `json:"total_debit"`
+	TotalCredit      string     `json:"total_credit"`
+	TotalBalance     string     `json:"total_balance"`
+	IsHeader         bool       `json:"is_header"`
 }
 
 type VendorsResponse struct {
@@ -579,15 +587,18 @@ func GroupTransactionsWithGrandTotalsForVendors(rows []VendorBalanceDetail) Vend
 	accountMap := make(map[int]map[int]*Account)
 
 	var grandDebit, grandCredit, grandBalance string
+	var grandDebitCents, grandCreditCents int64
 
 	for _, r := range rows {
 
 		// ---- Vendor ----
 		if _, ok := vendorsMap[r.PeopleID]; !ok {
 			vendorsMap[r.PeopleID] = &Vendor{
-				PeopleID:   r.PeopleID,
-				PeopleName: r.Name,
-				IsHeader:   true,
+				PeopleID:         r.PeopleID,
+				PeopleName:       r.Name,
+				IsHeader:         true,
+				TotalDebitCents:  0,
+				TotalCreditCents: 0,
 			}
 			accountMap[r.PeopleID] = make(map[int]*Account)
 		}
@@ -596,9 +607,11 @@ func GroupTransactionsWithGrandTotalsForVendors(rows []VendorBalanceDetail) Vend
 		// ---- Account ----
 		if _, ok := accountMap[r.PeopleID][r.AccountID]; !ok {
 			account := &Account{
-				AccountID:     r.AccountID,
-				AccountName:   r.AccountName,
-				AccountNumber: r.AccountNumber,
+				AccountID:        r.AccountID,
+				AccountName:      r.AccountName,
+				AccountNumber:    r.AccountNumber,
+				TotalDebitCents:  0,
+				TotalCreditCents: 0,
 			}
 			accountMap[r.PeopleID][r.AccountID] = account
 			vendor.Accounts = append(vendor.Accounts, account)
@@ -634,21 +647,31 @@ func GroupTransactionsWithGrandTotalsForVendors(rows []VendorBalanceDetail) Vend
 			Balance:           r.Balance,
 		})
 
-		// ---- Totals (Account) ----
-		account.TotalDebit += money.FormatMoneyFromCents(debit)
-		account.TotalCredit += money.FormatMoneyFromCents(credit)
-		account.TotalBalance += money.FormatMoneyFromCents(debit - credit)
+		// ---- Accumulate Account totals ----
+		account.TotalDebitCents += debit
+		account.TotalCreditCents += credit
 
-		// ---- Totals (Vendor) ----
-		vendor.TotalDebit += money.FormatMoneyFromCents(debit)
-		vendor.TotalCredit += money.FormatMoneyFromCents(credit)
-		vendor.TotalBalance += money.FormatMoneyFromCents(debit - credit)
+		account.TotalDebit = money.FormatMoneyFromCents(account.TotalDebitCents)
+		account.TotalCredit = money.FormatMoneyFromCents(account.TotalCreditCents)
+		account.TotalBalance = money.FormatMoneyFromCents(account.TotalCreditCents - account.TotalDebitCents)
 
-		// ---- Grand totals ----
-		grandDebit += money.FormatMoneyFromCents(debit)
-		grandCredit += money.FormatMoneyFromCents(credit)
-		grandBalance += money.FormatMoneyFromCents(debit - credit)
+		// ---- Accumulate Customer totals ----
+		vendor.TotalDebitCents += debit
+		vendor.TotalCreditCents += credit
+
+		vendor.TotalDebit = money.FormatMoneyFromCents(vendor.TotalDebitCents)
+		vendor.TotalCredit = money.FormatMoneyFromCents(vendor.TotalCreditCents)
+		vendor.TotalBalance = money.FormatMoneyFromCents(vendor.TotalCreditCents -vendor.TotalDebitCents)
+
+		// ---- Accumulate Grand totals ----
+		grandDebitCents += debit
+		grandCreditCents += credit
 	}
+
+	// ---- Format Grand totals ----
+	grandDebit = money.FormatMoneyFromCents(grandDebitCents)
+	grandCredit = money.FormatMoneyFromCents(grandCreditCents)
+	grandBalance = money.FormatMoneyFromCents(grandCreditCents - grandDebitCents)
 
 	// ---- Map → Slice ----
 	var vendors []Vendor
