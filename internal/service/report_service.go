@@ -212,13 +212,13 @@ func (s *ReportService) GetCustomerBalanceSummary(ctx context.Context, buildingI
 	}
 
 	// Calculate total balance
-	totalBalance := 0.0
+	totalBalance := int64(0)
 	customersList := []dto.CustomerBalance{}
 	for _, customer := range customers {
 		customersList = append(customersList, dto.CustomerBalance{
 			PeopleID:   customer.PeopleID,
 			PeopleName: customer.PeopleName,
-			Balance:    customer.Balance,
+			Balance:    money.FormatMoneyFromCents(customer.Balance),
 		})
 		totalBalance += customer.Balance
 	}
@@ -227,7 +227,7 @@ func (s *ReportService) GetCustomerBalanceSummary(ctx context.Context, buildingI
 		BuildingID:   buildingID,
 		AsOfDate:     asOfDate,
 		Customers:    customersList,
-		TotalBalance: totalBalance,
+		TotalBalance: money.FormatMoneyFromCents(totalBalance),
 	}, nil
 
 }

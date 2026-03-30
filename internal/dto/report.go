@@ -116,14 +116,14 @@ type CustomerBalanceSummaryRequest struct {
 type CustomerBalance struct {
 	PeopleID   int     `json:"people_id"`
 	PeopleName string  `json:"people_name"`
-	Balance    float64 `json:"balance"` // Total balance from all splits
+	Balance    string `json:"balance"` // Total balance from all splits
 }
 
 type CustomerBalanceSummaryResponse struct {
 	BuildingID   int               `json:"building_id"`
 	AsOfDate     string            `json:"as_of_date"`
 	Customers    []CustomerBalance `json:"customers"`
-	TotalBalance float64           `json:"total_balance"`
+	TotalBalance string           `json:"total_balance"`
 }
 
 // Customer Balance Details DTOs

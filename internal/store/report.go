@@ -187,12 +187,12 @@ ORDER BY a.account_number;
 type CustomerSummary struct {
 	PeopleID   int     `json:"people_id"`
 	PeopleName string  `json:"people_name"`
-	Balance    float64 `json:"balance"`
+	Balance    int64 `json:"balance"`
 }
 
 func (s *ReportStore) GetCustomerBalanceSummary(ctx context.Context, buildingID int, asOfDate string) ([]CustomerSummary, error) {
 	query := `
-		SELECT p.id,p.name,(ifnull(SUM(s.debit),0) - ifnull(SUM(s.credit),0)) as balance
+		SELECT p.id,p.name,(ifnull(SUM(s.debit_cents),0) - ifnull(SUM(s.credit_cents),0)) as balance
 FROM people p
 LEFT JOIN splits s ON s.people_id = p.id and s.status = "1"
 LEFT JOIN transactions t on s.transaction_id = t.id and t.status = "1" 
