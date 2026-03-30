@@ -238,13 +238,13 @@ type CustomerBalanceDetail struct {
 	TransactionNumber string
 	Type              string
 	Memo              string
-	Debit             *float64
-	Credit            *float64
+	Debit             *int64
+	Credit            *int64
 }
 
 func (s *ReportStore) GetCustomerBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) ([]CustomerBalanceDetail, error) {
 	query := `
-		SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit,s.credit FROM splits s
+		SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit_cents,s.credit_cents FROM splits s
 LEFT JOIN transactions t on s.transaction_id = t.id
 LEFT JOIN accounts ac on s.account_id = ac.id
 LEFT JOIN account_types as at on ac.account_type = at.id
@@ -348,13 +348,13 @@ type VendorBalanceDetail struct {
 	TransactionNumber string
 	Type              string
 	Memo              string
-	Debit             *float64
-	Credit            *float64
+	Debit             *int64
+	Credit            *int64
 }
 
 func (s *ReportStore) GetVendorBalanceDetail(ctx context.Context, buildingID int, asOfDate string, peopleID *int) ([]VendorBalanceDetail, error) {
 	query := `
-		SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit,s.credit FROM splits s
+		SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit_cents,s.credit_cents FROM splits s
 LEFT JOIN transactions t on s.transaction_id = t.id
 LEFT JOIN accounts ac on s.account_id = ac.id
 LEFT JOIN account_types as at on ac.account_type = at.id
