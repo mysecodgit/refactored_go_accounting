@@ -413,14 +413,16 @@ type TransactionDetail struct {
 	TransactionDate   string
 	TransactionNumber string
 	Type              string
+	TransactionType   string
 	Memo              string
-	Debit             *float64
-	Credit            *float64
+	Debit             *int64
+	Credit            *int64
 }
 
 func (s *ReportStore) GetTransactionDetails(ctx context.Context, buildingID int, startDate string, endDate string, accountID []int, unitID *int) ([]TransactionDetail, error) {
 	query := `
- SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,at.typeName account_type,t.transaction_date,t.transaction_number,t.type,t.memo,s.debit,s.credit FROM splits s
+ SELECT p.id people_id ,p.name,ac.id account_id,ac.account_number,ac.account_name,at.typeName account_type,
+ t.transaction_date,t.transaction_number,t.type as transaction_type,at.typeStatus,t.memo,s.debit_cents,s.credit_cents FROM splits s
 LEFT JOIN transactions t on s.transaction_id = t.id
 LEFT JOIN accounts ac on s.account_id = ac.id
 LEFT JOIN account_types as at on ac.account_type = at.id
@@ -475,6 +477,7 @@ WHERE s.status = '1' and t.transaction_date between ? and ? and t.building_id = 
 			&transactionDetail.AccountType,
 			&transactionDetail.TransactionDate,
 			&transactionDetail.TransactionNumber,
+			&transactionDetail.TransactionType,
 			&transactionDetail.Type,
 			&transactionDetail.Memo,
 			&transactionDetail.Debit,

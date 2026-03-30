@@ -661,7 +661,7 @@ func GroupTransactionsWithGrandTotalsForVendors(rows []VendorBalanceDetail) Vend
 
 		vendor.TotalDebit = money.FormatMoneyFromCents(vendor.TotalDebitCents)
 		vendor.TotalCredit = money.FormatMoneyFromCents(vendor.TotalCreditCents)
-		vendor.TotalBalance = money.FormatMoneyFromCents(vendor.TotalCreditCents -vendor.TotalDebitCents)
+		vendor.TotalBalance = money.FormatMoneyFromCents(vendor.TotalCreditCents - vendor.TotalDebitCents)
 
 		// ---- Accumulate Grand totals ----
 		grandDebitCents += debit
@@ -694,7 +694,42 @@ func (s *ReportService) GetTransactionDetails(ctx context.Context, buildingID in
 		return nil, err
 	}
 	transactionDetailsList := []TransactionDetail{}
+	runningBalances := make(map[int]int64)
+
 	for _, transactionDetail := range transactionDetails {
+
+		debit := ""
+		credit := ""
+
+		if transactionDetail.Debit != nil {
+			debit = money.FormatMoneyFromCents(*transactionDetail.Debit)
+		}
+
+		if transactionDetail.Credit != nil {
+			credit = money.FormatMoneyFromCents(*transactionDetail.Credit)
+		}
+
+		accountID := transactionDetail.AccountID
+
+		// calculate runningbalance
+		if transactionDetail.Debit != nil {
+			if transactionDetail.Type == "debit" {
+				runningBalances[accountID] += *transactionDetail.Debit
+			} else {
+				runningBalances[accountID] -= *transactionDetail.Debit
+			}
+		}
+		if transactionDetail.Credit != nil {
+			if transactionDetail.Type == "debit" {
+				runningBalances[accountID] -= *transactionDetail.Credit
+			} else {
+				runningBalances[accountID] += *transactionDetail.Credit
+			}
+		}
+
+		balance := runningBalances[accountID]
+		balanceString := money.FormatMoneyFromCents(balance)
+
 		transactionDetailsList = append(transactionDetailsList, TransactionDetail{
 			PeopleID:          transactionDetail.PeopleID,
 			Name:              transactionDetail.Name,
@@ -704,10 +739,14 @@ func (s *ReportService) GetTransactionDetails(ctx context.Context, buildingID in
 			AccountType:       transactionDetail.AccountType,
 			TransactionDate:   transactionDetail.TransactionDate,
 			TransactionNumber: transactionDetail.TransactionNumber,
-			Type:              transactionDetail.Type,
+			Type:              transactionDetail.TransactionType,
+			TypeStatus:        transactionDetail.Type,
 			Memo:              transactionDetail.Memo,
-			Debit:             transactionDetail.Debit,
-			Credit:            transactionDetail.Credit,
+			Debit:             &debit,
+			Credit:            &credit,
+			DebitCents:        transactionDetail.Debit,
+			CreditCents:       transactionDetail.Credit,
+			Balance:           balanceString,
 		})
 	}
 
@@ -731,31 +770,38 @@ type TransactionDetail struct {
 	AccountType       string
 	TransactionDate   string
 	TransactionNumber string
+	TypeStatus        string
 	Type              string
 	Memo              string
-	Debit             *float64
-	Credit            *float64
+	Debit             *string
+	Credit            *string
+	DebitCents        *int64
+	CreditCents       *int64
+	Balance           string
 }
 
 type LedgerResponse struct {
 	BuildingID       int              `json:"building_id"`
 	StartDate        string           `json:"start_date"`
 	EndDate          string           `json:"end_date"`
-	GrandTotalDebit  float64          `json:"grand_total_debit"`
-	GrandTotalCredit float64          `json:"grand_total_credit"`
+	GrandTotalDebit  string           `json:"grand_total_debit"`
+	GrandTotalCredit string           `json:"grand_total_credit"`
 	Accounts         []*AccountLedger `json:"accounts"`
 }
 
 type AccountLedger struct {
-	AccountID     int     `json:"account_id"`
-	AccountNumber int     `json:"account_number"`
-	AccountName   string  `json:"account_name"`
-	AccountType   string  `json:"account_type"`
-	Splits        []Split `json:"splits"`
-	TotalDebit    float64 `json:"total_debit"`
-	TotalCredit   float64 `json:"total_credit"`
-	TotalBalance  float64 `json:"total_balance"`
-	IsTotalRow    bool    `json:"is_total_row,omitempty"`
+	AccountID        int     `json:"account_id"`
+	AccountNumber    int     `json:"account_number"`
+	AccountName      string  `json:"account_name"`
+	AccountType      string  `json:"account_type"`
+	TypeStatus       string  `json:"type_status"`
+	Splits           []Split `json:"splits"`
+	TotalDebitCents  int64   `json:"-"`
+	TotalCreditCents int64   `json:"-"`
+	TotalDebit       string  `json:"total_debit"`
+	TotalCredit      string  `json:"total_credit"`
+	TotalBalance     string  `json:"total_balance"`
+	IsTotalRow       bool    `json:"is_total_row,omitempty"`
 }
 
 func BuildLedgerResponse(
@@ -767,7 +813,8 @@ func BuildLedgerResponse(
 	accountMap := make(map[int]*AccountLedger)
 	var accounts []*AccountLedger
 
-	var grandDebit, grandCredit float64
+	var grandDebit, grandCredit string
+	var grandDebitCents, grandCreditCents int64
 
 	for _, r := range rows {
 
@@ -779,6 +826,7 @@ func BuildLedgerResponse(
 				AccountName:   r.AccountName,
 				AccountType:   r.AccountType,
 				Splits:        []Split{},
+				TypeStatus:    r.TypeStatus,
 			}
 			accountMap[r.AccountID] = account
 			accounts = append(accounts, account)
@@ -786,20 +834,27 @@ func BuildLedgerResponse(
 		account := accountMap[r.AccountID]
 
 		// ---- Amounts ----
-		var debit, credit float64
-		if r.Debit != nil {
-			debit = *r.Debit
+		var debit, credit int64
+		if r.DebitCents != nil {
+			debit = *r.DebitCents
 		}
-		if r.Credit != nil {
-			credit = *r.Credit
+		if r.CreditCents != nil {
+			credit = *r.CreditCents
 		}
 
 		// ---- Running balance ----
-		balance := debit - credit
-		if len(account.Splits) > 0 {
-			// balance += account.Splits[len(account.Splits)-1].Balance
-		}
+		// balance := debit - credit
+		// if len(account.Splits) > 0 {
+		// balance += account.Splits[len(account.Splits)-1].Balance
+		// }
 
+		fmt.Println("=============                   ===============")
+		fmt.Println("=============================================")
+		fmt.Println("r.TransactionNumber", r.TransactionNumber)
+		fmt.Println("r.TransactionDate", r.TransactionDate)
+		fmt.Println("r.TransactionType", r.Type)
+		fmt.Println("===============                ===============")
+		fmt.Println("=============================================")
 		// ---- Split ----
 		account.Splits = append(account.Splits, Split{
 			TransactionNumber: r.TransactionNumber,
@@ -808,19 +863,35 @@ func BuildLedgerResponse(
 			TransactionMemo:   r.Memo,
 			PeopleID:          r.PeopleID,
 			PeopleName:        r.Name,
-			// Debit:             r.Debit,
-			// Credit:            r.Credit,
-			// Balance:           balance,
+			Debit:             r.Debit,
+			Credit:            r.Credit,
+			Balance:           r.Balance,
 		})
 
 		// ---- Totals ----
-		account.TotalDebit += debit
-		account.TotalCredit += credit
-		account.TotalBalance = balance
+		account.TotalDebitCents += debit
+		account.TotalCreditCents += credit
 
-		grandDebit += debit
-		grandCredit += credit
+		account.TotalDebit = money.FormatMoneyFromCents(account.TotalDebitCents)
+		account.TotalCredit = money.FormatMoneyFromCents(account.TotalCreditCents)
+
+		// balance based on account type
+		var balanceCents int64
+
+		if account.TypeStatus == "debit" {
+			balanceCents = account.TotalDebitCents - account.TotalCreditCents
+		} else {
+			balanceCents = account.TotalCreditCents - account.TotalDebitCents
+		}
+
+		account.TotalBalance = money.FormatMoneyFromCents(balanceCents)
+
+		grandDebitCents += debit
+		grandCreditCents += credit
 	}
+
+	grandDebit = money.FormatMoneyFromCents(grandDebitCents)
+	grandCredit = money.FormatMoneyFromCents(grandCreditCents)
 
 	// ---- Add TOTAL row per account ----
 	var finalAccounts []*AccountLedger
