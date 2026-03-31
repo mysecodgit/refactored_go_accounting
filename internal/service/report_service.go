@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 
@@ -1068,8 +1067,8 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 	}
 
 	// Build account maps: account_id -> map[unit_id]balance
-	incomeAccountMap := make(map[int]map[int]float64)
-	expenseAccountMap := make(map[int]map[int]float64)
+	incomeAccountMap := make(map[int]map[int]int64)
+	expenseAccountMap := make(map[int]map[int]int64)
 	accountInfoMap := make(map[int]struct {
 		AccountNumber int
 		AccountName   string
@@ -1082,7 +1081,7 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 			unitID = *row.UnitID
 		}
 		if incomeAccountMap[row.AccountID] == nil {
-			incomeAccountMap[row.AccountID] = make(map[int]float64)
+			incomeAccountMap[row.AccountID] = make(map[int]int64)
 		}
 		incomeAccountMap[row.AccountID][unitID] = row.Balance
 		accountInfoMap[row.AccountID] = struct {
@@ -1101,7 +1100,7 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 			unitID = *row.UnitID
 		}
 		if expenseAccountMap[row.AccountID] == nil {
-			expenseAccountMap[row.AccountID] = make(map[int]float64)
+			expenseAccountMap[row.AccountID] = make(map[int]int64)
 		}
 		expenseAccountMap[row.AccountID][unitID] = row.Balance
 		accountInfoMap[row.AccountID] = struct {
@@ -1117,17 +1116,23 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 	incomeAccounts := make([]dto.AccountRow, 0)
 	for accountID, balances := range incomeAccountMap {
 		info := accountInfoMap[accountID]
-		total := 0.0
+		total := int64(0)
 		for _, balance := range balances {
 			total += balance
+		}
+
+		balancesStr := make(map[int]string)
+		for unitID, balance := range balances {
+			balancesStr[unitID] = money.FormatMoneyFromCents(balance)
 		}
 		incomeAccounts = append(incomeAccounts, dto.AccountRow{
 			AccountID:     accountID,
 			AccountNumber: info.AccountNumber,
 			AccountName:   info.AccountName,
 			AccountType:   "income",
-			Balances:      balances,
-			Total:         total,
+			Balances:      balancesStr,
+			BalancesCents: balances,
+			Total:         money.FormatMoneyFromCents(total),
 		})
 	}
 
@@ -1135,33 +1140,40 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 	expenseAccounts := make([]dto.AccountRow, 0)
 	for accountID, balances := range expenseAccountMap {
 		info := accountInfoMap[accountID]
-		total := 0.0
+		total := int64(0)
 		for _, balance := range balances {
 			total += balance
 		}
+
+		balancesStr := make(map[int]string)
+		for unitID, balance := range balances {
+			balancesStr[unitID] = money.FormatMoneyFromCents(balance)
+		}
+
 		expenseAccounts = append(expenseAccounts, dto.AccountRow{
 			AccountID:     accountID,
 			AccountNumber: info.AccountNumber,
 			AccountName:   info.AccountName,
 			AccountType:   "expense",
-			Balances:      balances,
-			Total:         total,
+			Balances:      balancesStr,
+			BalancesCents: balances,
+			Total:         money.FormatMoneyFromCents(total),
 		})
 	}
 
 	// Calculate totals by unit
-	totalIncome := make(map[int]float64)
-	totalExpenses := make(map[int]float64)
-	netProfitLoss := make(map[int]float64)
+	totalIncome := make(map[int]int64)
+	totalExpenses := make(map[int]int64)
+	netProfitLoss := make(map[int]int64)
 
 	for _, account := range incomeAccounts {
-		for unitID, balance := range account.Balances {
+		for unitID, balance := range account.BalancesCents {
 			totalIncome[unitID] += balance
 		}
 	}
 
 	for _, account := range expenseAccounts {
-		for unitID, balance := range account.Balances {
+		for unitID, balance := range account.BalancesCents {
 			totalExpenses[unitID] += balance
 		}
 	}
@@ -1177,12 +1189,12 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 	}
 
 	// Calculate grand totals
-	grandTotalIncome := 0.0
+	grandTotalIncome := int64(0)
 	for _, total := range totalIncome {
 		grandTotalIncome += total
 	}
 
-	grandTotalExpenses := 0.0
+	grandTotalExpenses := int64(0)
 	for _, total := range totalExpenses {
 		grandTotalExpenses += total
 	}
@@ -1190,32 +1202,46 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 	grandTotalNetProfitLoss := grandTotalIncome - grandTotalExpenses
 
 	// Round values to 2 decimals
-	round2 := func(v float64) float64 {
-		return math.Round(v*100) / 100
-	}
+	// round2 := func(v float64) float64 {
+	// 	return math.Round(v*100) / 100
+	// }
 
 	for i := range incomeAccounts {
 		for unitID := range incomeAccounts[i].Balances {
-			incomeAccounts[i].Balances[unitID] = round2(incomeAccounts[i].Balances[unitID])
+			incomeAccounts[i].Balances[unitID] = incomeAccounts[i].Balances[unitID]
 		}
-		incomeAccounts[i].Total = round2(incomeAccounts[i].Total)
+		incomeAccounts[i].Total = incomeAccounts[i].Total
 	}
 
 	for i := range expenseAccounts {
 		for unitID := range expenseAccounts[i].Balances {
-			expenseAccounts[i].Balances[unitID] = round2(expenseAccounts[i].Balances[unitID])
+			expenseAccounts[i].Balances[unitID] = expenseAccounts[i].Balances[unitID]
 		}
-		expenseAccounts[i].Total = round2(expenseAccounts[i].Total)
+		expenseAccounts[i].Total = expenseAccounts[i].Total
 	}
 
 	for unitID := range totalIncome {
-		totalIncome[unitID] = round2(totalIncome[unitID])
+		totalIncome[unitID] = totalIncome[unitID]
 	}
 	for unitID := range totalExpenses {
-		totalExpenses[unitID] = round2(totalExpenses[unitID])
+		totalExpenses[unitID] = totalExpenses[unitID]
 	}
 	for unitID := range netProfitLoss {
-		netProfitLoss[unitID] = round2(netProfitLoss[unitID])
+		netProfitLoss[unitID] = netProfitLoss[unitID]
+	}
+
+	totalIncomeStr := make(map[int]string)
+
+	for k, v := range totalIncome {
+		totalIncomeStr[k] = money.FormatMoneyFromCents(v)
+	}
+	totalExpensesStr := make(map[int]string)
+	for k, v := range totalExpenses {
+		totalExpensesStr[k] = money.FormatMoneyFromCents(v)
+	}
+	netProfitLossStr := make(map[int]string)
+	for k, v := range netProfitLoss {
+		netProfitLossStr[k] = money.FormatMoneyFromCents(v)
 	}
 
 	return &dto.ProfitAndLossByUnitResponse{
@@ -1225,12 +1251,12 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 		Units:                   unitsList,
 		IncomeAccounts:          incomeAccounts,
 		ExpenseAccounts:         expenseAccounts,
-		TotalIncome:             totalIncome,
-		TotalExpenses:           totalExpenses,
-		NetProfitLoss:           netProfitLoss,
-		GrandTotalIncome:        round2(grandTotalIncome),
-		GrandTotalExpenses:      round2(grandTotalExpenses),
-		GrandTotalNetProfitLoss: round2(grandTotalNetProfitLoss),
+		TotalIncome:             totalIncomeStr,
+		TotalExpenses:           totalExpensesStr,
+		NetProfitLoss:           netProfitLossStr,
+		GrandTotalIncome:        money.FormatMoneyFromCents(grandTotalIncome),
+		GrandTotalExpenses:      money.FormatMoneyFromCents(grandTotalExpenses),
+		GrandTotalNetProfitLoss: money.FormatMoneyFromCents(grandTotalNetProfitLoss),
 	}, nil
 }
 

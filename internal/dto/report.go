@@ -297,8 +297,9 @@ type AccountRow struct {
 	AccountNumber int             `json:"account_number"`
 	AccountName   string          `json:"account_name"`
 	AccountType   string          `json:"account_type"` // "income" or "expense"
-	Balances      map[int]float64 `json:"balances"`     // unit_id -> balance
-	Total         float64         `json:"total"`
+	Balances      map[int]string `json:"balances"`     // unit_id -> balance
+	BalancesCents map[int]int64 `json:"-"`     // unit_id -> balance
+	Total         string         `json:"total"`
 }
 
 type ProfitAndLossByUnitResponse struct {
@@ -308,10 +309,10 @@ type ProfitAndLossByUnitResponse struct {
 	Units                   []UnitColumn    `json:"units"`            // Column headers
 	IncomeAccounts          []AccountRow    `json:"income_accounts"`  // Income account rows
 	ExpenseAccounts         []AccountRow    `json:"expense_accounts"` // Expense account rows
-	TotalIncome             map[int]float64 `json:"total_income"`     // unit_id -> total income
-	TotalExpenses           map[int]float64 `json:"total_expenses"`   // unit_id -> total expenses
-	NetProfitLoss           map[int]float64 `json:"net_profit_loss"`  // unit_id -> net profit/loss
-	GrandTotalIncome        float64         `json:"grand_total_income"`
-	GrandTotalExpenses      float64         `json:"grand_total_expenses"`
-	GrandTotalNetProfitLoss float64         `json:"grand_total_net_profit_loss"`
+	TotalIncome             map[int]string `json:"total_income"`     // unit_id -> total income
+	TotalExpenses           map[int]string `json:"total_expenses"`   // unit_id -> total expenses
+	NetProfitLoss           map[int]string `json:"net_profit_loss"`  // unit_id -> net profit/loss
+	GrandTotalIncome        string         `json:"grand_total_income"`
+	GrandTotalExpenses      string         `json:"grand_total_expenses"`
+	GrandTotalNetProfitLoss string         `json:"grand_total_net_profit_loss"`
 }

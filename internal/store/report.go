@@ -499,15 +499,7 @@ type PLAccountRow struct {
 	Balance       int64 `json:"balance"`
 }
 
-type PLAccountRowByUnit struct {
-	AccountID     int     `json:"account_id"`
-	AccountNumber int     `json:"account_number"`
-	AccountName   string  `json:"account_name"`
-	AccountType   string  `json:"typeName"`
-	UnitID        *int    `json:"unit_id"`
-	UnitName      *string `json:"unit_name"`
-	Balance       float64 `json:"balance"`
-}
+
 
 func (s *ReportStore) GetAccountBalanceByAccountType(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]PLAccountRow, error) {
 	query := `
@@ -565,6 +557,16 @@ ORDER BY ac.account_number;
 	return plAccounts, nil
 }
 
+type PLAccountRowByUnit struct {
+	AccountID     int     `json:"account_id"`
+	AccountNumber int     `json:"account_number"`
+	AccountName   string  `json:"account_name"`
+	AccountType   string  `json:"typeName"`
+	UnitID        *int    `json:"unit_id"`
+	UnitName      *string `json:"unit_name"`
+	Balance       int64 `json:"balance"`
+}
+
 func (s *ReportStore) GetAccountBalanceByAccountTypeAndUnit(ctx context.Context, buildingID int, startDate string, endDate string, accountType string) ([]PLAccountRowByUnit, error) {
 	query := `
 		SELECT 
@@ -576,8 +578,8 @@ func (s *ReportStore) GetAccountBalanceByAccountTypeAndUnit(ctx context.Context,
 			u.name AS unit_name,
 			SUM(
 				CASE 
-					WHEN at.typeStatus = 'debit' THEN IFNULL(s.debit, 0) - IFNULL(s.credit, 0)
-					WHEN at.typeStatus = 'credit' THEN IFNULL(s.credit, 0) - IFNULL(s.debit, 0)
+					WHEN at.typeStatus = 'debit' THEN IFNULL(s.debit_cents, 0) - IFNULL(s.credit_cents, 0)
+					WHEN at.typeStatus = 'credit' THEN IFNULL(s.credit_cents, 0) - IFNULL(s.debit_cents, 0)
 					ELSE 0
 				END
 			) AS balance
