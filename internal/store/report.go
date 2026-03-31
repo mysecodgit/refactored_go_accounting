@@ -494,9 +494,9 @@ type PLAccountRow struct {
 	AccountNumber int     `json:"account_number"`
 	AccountName   string  `json:"account_name"`
 	AccountType   string  `json:"typeName"`
-	TotalDebit    float64 `json:"total_debit"`
-	TotalCredit   float64 `json:"total_credit"`
-	Balance       float64 `json:"balance"`
+	TotalDebit    int64 `json:"total_debit"`
+	TotalCredit   int64 `json:"total_credit"`
+	Balance       int64 `json:"balance"`
 }
 
 type PLAccountRowByUnit struct {
@@ -515,12 +515,12 @@ func (s *ReportStore) GetAccountBalanceByAccountType(ctx context.Context, buildi
 	ac.account_number,
     ac.account_name,
     at.typeName,
-    SUM(IFNULL(s.debit, 0)) AS total_debit,
-    SUM(IFNULL(s.credit, 0)) AS total_credit,
+    SUM(IFNULL(s.debit_cents, 0)) AS total_debit,
+    SUM(IFNULL(s.credit_cents, 0)) AS total_credit,
     SUM(
         CASE 
-            WHEN at.typeStatus = 'debit' THEN IFNULL(s.debit, 0) - IFNULL(s.credit, 0)
-            WHEN at.typeStatus = 'credit' THEN IFNULL(s.credit, 0) - IFNULL(s.debit, 0)
+            WHEN at.typeStatus = 'debit' THEN IFNULL(s.debit_cents, 0) - IFNULL(s.credit_cents, 0)
+            WHEN at.typeStatus = 'credit' THEN IFNULL(s.credit_cents, 0) - IFNULL(s.debit_cents, 0)
             ELSE 0
         END
     ) AS balance

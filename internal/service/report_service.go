@@ -922,6 +922,16 @@ func BuildLedgerResponse(
 }
 
 // GetProfitAndLossStandard
+
+type PLAccountRow struct {
+	AccountNumber int    `json:"account_number"`
+	AccountName   string `json:"account_name"`
+	AccountType   string `json:"typeName"`
+	TotalDebit    string `json:"total_debit"`
+	TotalCredit   string `json:"total_credit"`
+	Balance       string `json:"balance"`
+}
+
 func (s *ReportService) GetProfitAndLossStandard(ctx context.Context, buildingID int, startDate string, endDate string) (*PLReport, error) {
 	incomeAccounts, err := s.reportStore.GetAccountBalanceByAccountType(ctx, buildingID, startDate, endDate, "Income")
 	if err != nil {
@@ -933,24 +943,40 @@ func (s *ReportService) GetProfitAndLossStandard(ctx context.Context, buildingID
 		return nil, err
 	}
 
-	totalExpense := 0.0
+	totalExpense := int64(0)
 	for _, expense := range expenseAccounts {
 		totalExpense += expense.Balance
 	}
 
-	totalIncome := 0.0
+	totalIncome := int64(0)
 	for _, income := range incomeAccounts {
 		totalIncome += income.Balance
 	}
 
 	// initialize with empty []
-	expenseAccountsList := []store.PLAccountRow{}
-	incomeAccountsList := []store.PLAccountRow{}
+	expenseAccountsList := []PLAccountRow{}
+	incomeAccountsList := []PLAccountRow{}
 	for _, expense := range expenseAccounts {
-		expenseAccountsList = append(expenseAccountsList, expense)
+		expenseAccount := PLAccountRow{
+			AccountNumber: expense.AccountNumber,
+			AccountName:   expense.AccountName,
+			AccountType:   expense.AccountType,
+			TotalDebit:    money.FormatMoneyFromCents(expense.TotalDebit),
+			TotalCredit:   money.FormatMoneyFromCents(expense.TotalCredit),
+			Balance:       money.FormatMoneyFromCents(expense.Balance),
+		}
+		expenseAccountsList = append(expenseAccountsList, expenseAccount)
 	}
 	for _, income := range incomeAccounts {
-		incomeAccountsList = append(incomeAccountsList, income)
+		incomeAccount := PLAccountRow{
+			AccountNumber: income.AccountNumber,
+			AccountName:   income.AccountName,
+			AccountType:   income.AccountType,
+			TotalDebit:    money.FormatMoneyFromCents(income.TotalDebit),
+			TotalCredit:   money.FormatMoneyFromCents(income.TotalCredit),
+			Balance:       money.FormatMoneyFromCents(income.Balance),
+		}
+		incomeAccountsList = append(incomeAccountsList, incomeAccount)
 	}
 
 	return &PLReport{
@@ -960,14 +986,14 @@ func (s *ReportService) GetProfitAndLossStandard(ctx context.Context, buildingID
 		Expenses: PLSection{
 			Accounts:    expenseAccountsList,
 			SectionName: "Expense",
-			Total:       totalExpense,
+			Total:       money.FormatMoneyFromCents(totalExpense),
 		},
 		Income: PLSection{
 			Accounts:    incomeAccountsList,
 			SectionName: "Income",
-			Total:       totalIncome,
+			Total:       money.FormatMoneyFromCents(totalIncome),
 		},
-		NetProfitLoss: totalIncome - totalExpense,
+		NetProfitLoss: money.FormatMoneyFromCents(totalIncome - totalExpense),
 	}, nil
 
 }
@@ -1209,9 +1235,9 @@ func (s *ReportService) GetProfitAndLossByUnit(ctx context.Context, buildingID i
 }
 
 type PLSection struct {
-	Accounts    []store.PLAccountRow `json:"accounts"`
-	SectionName string               `json:"section_name"`
-	Total       float64              `json:"total"`
+	Accounts    []PLAccountRow `json:"accounts"`
+	SectionName string         `json:"section_name"`
+	Total       string         `json:"total"`
 }
 
 type PLReport struct {
@@ -1220,5 +1246,5 @@ type PLReport struct {
 	EndDate       string    `json:"end_date"`
 	Expenses      PLSection `json:"expenses"`
 	Income        PLSection `json:"income"`
-	NetProfitLoss float64   `json:"net_profit_loss"`
+	NetProfitLoss string    `json:"net_profit_loss"`
 }
